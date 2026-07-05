@@ -6,7 +6,7 @@ Aplicação desktop em Python (customtkinter + pyodbc + pandas) que importa gran
 volumes de dados para o banco SQL Server do MaxManager a partir de arquivos
 `.txt`/`.csv`, e migra dados diretamente **entre dois bancos MaxData** (banco → banco).
 
-- **Versão atual:** `3.6.1` (definida em [`mi_config.py`](mi_config.py) → `APP_VERSION`)
+- **Versão atual:** `3.6.2` (definida em [`mi_config.py`](mi_config.py) → `APP_VERSION`)
 - **Plataforma:** Windows 10/11 (64 bits)
 - **Banco:** SQL Server (ODBC Driver 17)
 
@@ -34,10 +34,16 @@ volumes de dados para o banco SQL Server do MaxManager a partir de arquivos
 
 ## Como gerar o executável
 
-1. Deixe na mesma pasta: `max_importa.py`, `logo_maxdata.png`, `max_x.ico`, `max_importa.spec`, `BUILD.bat`
+1. Deixe na mesma pasta os fontes + build:
+   - `max_importa.py` **e os 6 módulos** `mi_config.py`, `mi_report.py`, `mi_db.py`,
+     `mi_migracao.py`, `mi_importadores.py`, `mi_validacao.py`
+   - `max_importa.spec`, `BUILD.bat`, `logo_maxdata.png`, `max_x.ico`
+   - `pytest.ini` + a pasta `tests/` (o `BUILD.bat` roda os testes como *gate* antes de compilar)
 2. Duplo clique em **`BUILD.bat`**
+   - Instala Python + dependências (customtkinter, pyodbc, pandas, pillow, pyinstaller, pytest) se faltarem
+   - Roda os testes unitários; se algum falhar, **aborta** (o `.exe` não é gerado).
+     Para incluir os testes de banco: `set MI_TEST_DB=1`. Para pular: `set MI_SKIP_TESTS=1`.
    - Se abrir como Administrador, ele se reabre sozinho sem elevação
-   - Se o Python não existir, ele instala automaticamente e se reabre
 3. O `Max_Importa.exe` é gerado na mesma pasta
 
 Detalhes: [docs/BUILD.md](docs/BUILD.md)

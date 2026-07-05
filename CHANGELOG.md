@@ -8,6 +8,19 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.2] — 2026-07-05
+
+### Visual — Clean Corporate agora aplica as superfícies (correção)
+- Na 3.6.1 só os **acentos** (vermelho/tons) tinham mudado; janela, cards e inputs
+  seguiam no cinza do tema interno do CustomTkinter — no claro a diferença ficava quase
+  imperceptível.
+- Agora o tema sobrescreve as **superfícies** (uma função no startup): janela = página
+  clara (`#F7F8FA`/`#16181C`), **cards brancos** (`#FFFFFF`/`#1D2025`), inputs/combos/
+  textbox/checkbox/scroll/segmented no padrão Clean Corporate. Botões seguem o vermelho da
+  marca (`#CC0000`). Sem alterar nenhuma função — só tema.
+
+---
+
 ## [3.6.1] — 2026-07-05
 
 ### Visual — tema "Clean Corporate" (paleta claro/escuro)

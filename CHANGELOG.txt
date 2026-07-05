@@ -439,6 +439,21 @@ VISUAL — tema "Clean Corporate" (paleta claro/escuro)
 - Nenhuma janela, variavel, conexao ou regra foi alterada.
 
 --------------------------------------------------------
+ [3.6.2] - 2026-07-05
+--------------------------------------------------------
+VISUAL — Clean Corporate agora aplica as SUPERFICIES (correcao)
+- Na 3.6.1 so os ACENTOS (vermelho/tons) tinham mudado; a janela,
+  os cards e os inputs continuavam no cinza do tema interno do
+  CustomTkinter, entao a mudanca ficava quase imperceptivel no claro.
+- Agora o tema sobrescreve tambem as SUPERFICIES (uma unica funcao
+  no startup, antes de qualquer janela): janela = pagina clara
+  (#F7F8FA / escuro #16181C), cards BRANCOS (#FFFFFF / #1D2025),
+  inputs/combos/textbox/checkbox/scroll/segmented no padrao Clean
+  Corporate. Botoes seguem o vermelho da marca (#CC0000).
+- Continua sem alterar nenhuma funcao/logica — so cores/tema.
+  Padrao CLARO; o botao de tema do menu alterna claro/escuro.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

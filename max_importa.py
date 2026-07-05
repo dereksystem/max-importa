@@ -39,6 +39,48 @@ def _logo_label(parent, height=50):
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
+# ── Tema "Clean Corporate" — sobrescreve as SUPERFICIES do CustomTkinter ───────
+# Sem isso, janela/cards/inputs ficariam no cinza padrao do tema "blue"; aqui eles
+# passam a ser pagina clara + cards brancos (e equivalentes no escuro). Roda no
+# import, ANTES de qualquer janela ser criada, entao vale para todos os widgets.
+_CC_PAGE  = ["#F7F8FA", "#16181C"]   # fundo da janela
+_CC_CARD  = ["#FFFFFF", "#1D2025"]   # cards / frames de conteudo
+_CC_SUTIL = ["#F0F2F5", "#20242A"]   # superficie sutil
+_CC_BORDA = ["#E3E6EA", "#2E323A"]   # bordas
+_CC_INPUT = ["#FFFFFF", "#24272D"]   # inputs / combos
+_CC_TXT   = ["#1A1D21", "#E6E8EB"]   # texto principal
+_CC_TXT2  = ["#5B6470", "#8A9099"]   # texto secundario
+_CC_GREEN = ["#2E9E6B", "#35B37E"]   # sucesso / marcado
+def _aplicar_tema_clean_corporate():
+    t = ctk.ThemeManager.theme
+    t["CTk"]["fg_color"] = list(_CC_PAGE)
+    t["CTkToplevel"]["fg_color"] = list(_CC_PAGE)
+    t["CTkFrame"].update(fg_color=list(_CC_CARD), top_fg_color=list(_CC_PAGE),
+                         border_color=list(_CC_BORDA))
+    t["CTkButton"].update(fg_color=list(MD_RED), hover_color=list(MD_RED_HOV),
+                          text_color=["#FFFFFF", "#FFFFFF"])
+    t["CTkEntry"].update(fg_color=list(_CC_INPUT), border_color=list(_CC_BORDA),
+                         text_color=list(_CC_TXT), placeholder_text_color=list(_CC_TXT2))
+    t["CTkComboBox"].update(fg_color=list(_CC_INPUT), border_color=list(_CC_BORDA),
+                            button_color=list(_CC_TXT2), button_hover_color=["#454C56", "#6E7680"],
+                            text_color=list(_CC_TXT))
+    t["CTkOptionMenu"].update(fg_color=list(_CC_INPUT), button_color=list(_CC_TXT2),
+                              text_color=list(_CC_TXT))
+    t["CTkCheckBox"].update(fg_color=list(_CC_GREEN), hover_color=["#268A5D", "#2E9E6B"],
+                            border_color=["#B4BAC2", "#4A505A"], checkmark_color=["#FFFFFF", "#FFFFFF"],
+                            text_color=list(_CC_TXT))
+    t["CTkTextbox"].update(fg_color=list(_CC_CARD), border_color=list(_CC_BORDA),
+                           text_color=list(_CC_TXT))
+    t["CTkProgressBar"].update(fg_color=list(_CC_BORDA))
+    t["CTkScrollableFrame"].update(label_fg_color=list(_CC_SUTIL))
+    t["CTkScrollbar"].update(button_color=["#C4CAD3", "#3A3F47"],
+                             button_hover_color=["#AEB6C0", "#4A505A"])
+    t["CTkSegmentedButton"].update(fg_color=list(_CC_SUTIL), selected_color=list(MD_RED),
+                                   selected_hover_color=list(MD_RED_HOV),
+                                   unselected_color=list(_CC_SUTIL), unselected_hover_color=list(_CC_BORDA),
+                                   text_color=list(_CC_TXT))
+_aplicar_tema_clean_corporate()
+
 # ── Relatórios/export ao final da importação (extraídos para mi_report.py) ─────
 from mi_report import (
     _gerar_arquivo_erros, _montar_msg_obrigatorios, _marcar_arquivo_importado,
