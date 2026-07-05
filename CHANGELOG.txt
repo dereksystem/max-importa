@@ -1,0 +1,444 @@
+========================================================
+ MAX_IMPORTA — HISTÓRICO DE VERSÕES (CHANGELOG)
+========================================================
+
+Formato da versão: MAJOR.MINOR.PATCH
+  MAJOR = mudança grande / incompatível
+  MINOR = novos recursos compatíveis
+  PATCH = correções
+
+A versão fica definida em max_importa.py -> APP_VERSION
+e aparece na tela de login, nos títulos das janelas e no
+cabeçalho dos relatórios.
+
+--------------------------------------------------------
+ [2.1.0] - 2026-07-01  (BASELINE antes da próxima grande alteração)
+--------------------------------------------------------
+Este é o marco estável atual. A partir daqui será feita
+uma alteração grande (que deverá virar a 3.0.0).
+
+PRODUTOS
+- proId vazio agora segue a numeração do próprio banco
+  (IDENTITY), capturada via SCOPE_IDENTITY e vinculada a
+  produto_empresa e codBarras. (Migração sem inventar IDs.)
+- Unidade (proUn) inexistente é cadastrada automaticamente
+  em produtoUn e já vinculada ao produto.
+- Corte automático de textos longos no limite da coluna
+  (fim do erro "dados seriam truncados"): proDescricao 100,
+  proLocalizador 20, proPrateleira 20, proCodigo 50,
+  proUn 10, proCodCSOSN 3, proCodCst2 2, proTipo 1.
+
+CLIENTES
+- Novo campo cliTipo no INSERT e UPDATE de clientes
+  (0 = Pessoa Física, 1 = Pessoa Jurídica). Incluído também na
+  migração entre bancos e nos modelos (txt e xlsx).
+  * Quando cliTipo não é mapeado (ou vem vazio), é DERIVADO
+    automaticamente do cliCpfCgc: CPF (11 díg) = 0, CNPJ (14 díg)
+    = 1. CPF/CNPJ vazio deixa cliTipo vazio.
+- Campos Fantasia, RG/Inscrição e Número do endereço deixaram
+  de bloquear a validação: tratamento interativo ao iniciar.
+    * Fantasia vazio: CPF -> branco automático;
+      CNPJ -> pergunta se repete o Nome (aviso de risco em
+      documentos fiscais, conferir após importar).
+    * RG/Insc vazio: CPF -> branco automático;
+      CNPJ -> pergunta ISENTO ou branco.
+    * Número vazio: pergunta S/N ou vazio.
+- Demais campos permanecem obrigatórios (CPF/CNPJ, Nome,
+  Endereço, Bairro, Cidade, IBGE, UF, CEP).
+
+MENSAGENS / LOGS
+- Mensagens de erro de obrigatórios AMIGÁVEIS (nome do campo,
+  quantidade e linhas), iguais nos 3 importadores.
+- Relatório e arquivo de ERROS gerados também quando a
+  validação falha (antes não gerava nada).
+- Ao concluir (com ou sem erros): o arquivo importado é
+  renomeado com status + data/hora (..._IMPORTADO_OK_... /
+  ..._IMPORTADO_COM_ERROS_...) e a seleção da tela é limpa,
+  evitando reimportar o mesmo arquivo por engano.
+- Arquivo ERROS_*.txt lista os nomes dos itens/clientes que
+  falharam.
+
+BUILD / EMPACOTAMENTO
+- BUILD.bat instala o Python automaticamente se ausente
+  (winget ou instalador oficial) e se reabre para aplicar PATH.
+- BUILD.bat se reabre sem privilégios quando aberto como
+  Administrador (PyInstaller não roda elevado).
+- Pillow empacotado no .exe (fim do erro "No module named PIL");
+  PIL incluído no hiddenimports do .spec.
+
+--------------------------------------------------------
+ [3.0.0] - 2026-07-01  (alteração grande)
+--------------------------------------------------------
+NOVO MÓDULO — MIGRAÇÃO ENTRE BANCOS MAXDATA (banco -> banco)
+- Botão no menu principal: "Migração entre Bancos MaxData".
+- Copia dados diretamente de um banco para outro da MESMA
+  instância SQL, sem precisar de arquivo.
+- O usuário escolhe o banco de ORIGEM e o de DESTINO (lista
+  dos bancos ONLINE da instância).
+- Escolhe o que migrar: Clientes, Produtos e/ou Financeiro.
+- Reutiliza a lógica de INSERT dos importadores (unidade
+  automática em produtoUn, corte de tamanho de textos, etc.).
+- Mantém os IDs de origem (proId/cliId); registros que já
+  existirem no destino são pulados (sem erro).
+- Ordem automática: Clientes -> Produtos -> Financeiro
+  (financeiro localiza o cliente por CPF/CNPJ no destino).
+- Gera os mesmos relatórios (RELATORIO_*.txt) por entidade.
+
+COMO FUNCIONA (técnico)
+- SELECT na origem já produz colunas com o nome dos campos
+  que os importadores esperam (mapping identidade).
+- O ID gerado/mantido segue as mesmas regras dos INSERTs.
+
+MIGRAÇÃO — RESILIÊNCIA A SCHEMA E RELATÓRIO
+- Os SELECTs de origem passaram a ser montados DINAMICAMENTE,
+  detectando quais colunas existem no banco de origem. Colunas
+  ausentes viram NULL — funciona entre versões/schemas diferentes
+  do MaxData (corrige erros como 'cliDatCad'/'ncmCodigoNCM'
+  inválido em bancos de schema diferente).
+- A migração agora SEMPRE gera um relatório próprio
+  (RELATORIO_MIGRACAO_AAAAMMDD_HHMM.txt), inclusive quando ocorre
+  erro (antes, se o SELECT falhava, não gerava nenhum log).
+
+MIGRAÇÃO — PERMISSÕES E TOTAIS
+- Nova opção "Permissões de Usuário" na migração: copia a tabela
+  UsuarioPermissao (uspUsuId, uspObjeto). Ordem: Clientes ->
+  Permissões -> Produtos -> Financeiro.
+    * Pula permissões que já existem (mesmo usuário + objeto).
+    * Ignora (sem erro) permissões cujo usuário/cliId não existe
+      no destino (FK uspUsuId -> cliente.cliId).
+- Ao concluir a migração, a tela mostra os TOTAIS CONSOLIDADOS de
+  cada opção migrada juntos (inseridos / não inseridos / erros),
+  em vez de um resumo separado por entidade.
+
+ACERTO DE ESTOQUE (produtos)
+- Após importar/atualizar produtos com SUCESSO, o sistema
+  verifica se há produtos com proEstoqueAtual > 0.
+    * Se não houver: informa que não há estoque para acerto.
+    * Se houver: habilita o botão "Gerar Acerto de Estoque".
+- O botão cria um ACERTO DE ESTOQUE PENDENTE (status 'A') com
+  todos os produtos com estoque > 0 (produtoAcertoEstoque +
+  produtoAcertoEstoqueItem), para ser rodado no Manager.
+- Usa o usuário admin (cliUsuLoginId = 2) e o empId do destino.
+
+CORREÇÕES
+- Tela de login redimensionada (altura) para o botão de
+  confirmar banco aparecer corretamente.
+
+ATENÇÃO
+- Faça BACKUP do banco de destino antes de migrar.
+- Origem e destino precisam estar na mesma instância SQL
+  (a mesma conectada no login).
+
+--------------------------------------------------------
+ [3.0.1] - 2026-07-01
+--------------------------------------------------------
+MIGRAÇÃO — CLIENTES (modo "banco zero")
+- A migração de CLIENTES passou a ser uma cópia idêntica com limpeza
+  do destino:
+    * Antes de iniciar, AVISA que 'cliente' e 'cliente_empresa' do
+      destino serão APAGADAS e sugere usar um banco ZERADO.
+    * Após ciência, LIMPA as duas tabelas (em transação — se houver
+      dados relacionados/FK, a limpeza é bloqueada e nada é apagado)
+      e RESETA os identities (DBCC CHECKIDENT reseed 0 -> começa do 1).
+    * Copia TODOS os cliId (inclusive 1-10) IDÊNTICOS à origem, sem a
+      validação de obrigatórios e sem a regra de cliId reservado.
+    * Campos copiados: cliCpfCgc, DataInclusao, cliDesativa, cliEmail,
+      cliFantasia, cliFatBairro, cliFatCep, cliFatCidade, cliFatCidCodIBGE,
+      cliFatEnd, cliFatEndNumero, cliFatUf, cliFone, cliId, cliNome,
+      cliRgInsc, cliTipoCad, cliTipo (+ recria o vínculo cliente_empresa).
+    * DUPLICADOS: detecta cliNome + cliCpfCgc iguais; informa quantos se
+      repetem e pergunta se deseja DESATIVAR os repetidos (mantém ativo
+      só o mais novo — maior cliId — e coloca cliDesativa = -1 nos demais)
+      ou manter todos como na origem.
+
+--------------------------------------------------------
+ [3.0.2] - 2026-07-01
+--------------------------------------------------------
+MIGRAÇÃO — PRODUTOS (estoque e acerto automático)
+- Ao iniciar a migração de PRODUTOS, pergunta se deseja MIGRAR o
+  ESTOQUE ATUAL (proEstoqueAtual):
+    * Não -> todos os produtos entram com estoque ZERO no destino.
+    * Sim -> se houver produtos com estoque NEGATIVO na origem,
+      pergunta se deseja iniciar esses com ZERO (Sim = zera apenas
+      os negativos | Não = mantém os valores da origem).
+- Após a conclusão da migração de produtos, se houver produtos com
+  estoque > 0 no destino, gera automaticamente o ACERTO DE ESTOQUE
+  PENDENTE (status 'A', obs 'MAXDATA SISTEMA - MIGRACAO') com esses
+  produtos e informa o usuário para RODAR o acerto no Manager.
+
+--------------------------------------------------------
+ [3.0.3] - 2026-07-02
+--------------------------------------------------------
+MIGRAÇÃO — CLIENTES: limpeza robusta via FK + Permissões idênticas
+- Correção do erro "A instrução DELETE conflitou com a restrição do
+  REFERENCE fk_UsuarioPermissao..." ao limpar o destino: num banco
+  "zero" os usuários-base são referenciados por VÁRIAS tabelas (284
+  FKs apontam para cliente/cliente_empresa).
+- Agora, na migração de Clientes, o sistema DESABILITA temporariamente
+  todas as FKs que referenciam cliente/cliente_empresa, LIMPA
+  UsuarioPermissao + cliente_empresa + cliente, insere idêntico
+  (mantendo os cliId) e REABILITA as FKs (validando — como os cliId
+  são preservados, as referências das demais tabelas seguem válidas;
+  se alguma não validar, é reabilitada sem validação, com aviso).
+- A tabela UsuarioPermissao passa a ser LIMPA e recopiada IDÊNTICA à
+  origem (antes só inseria os que faltavam).
+- Permissões entram AUTOMATICAMENTE quando Clientes é migrado (a
+  limpeza de Clientes apaga a UsuarioPermissao).
+
+--------------------------------------------------------
+ [3.0.4] - 2026-07-02
+--------------------------------------------------------
+MIGRAÇÃO — CÓDIGOS DE BARRAS (codBarras)
+- Nova opção "Códigos de Barras" na migração: copia o conteúdo
+  COMPLETO da tabela codBarras (todos os códigos de cada produto),
+  com a mesma lógica das permissões (LIMPA o destino + cópia idêntica
+  da origem; o cdbId é gerado pelo destino).
+- Ordem: Clientes -> Permissões -> Produtos -> Códigos de Barras ->
+  Financeiro (codBarras entra depois de Produtos por causa da FK
+  cdbIdProd -> produto.proId).
+- Ignora (sem erro) códigos cujo produto (cdbIdProd) não existe no
+  destino; cdbProUnId inexistente vira NULL.
+- Desabilita temporariamente a FK de proLote -> codBarras para
+  permitir a limpeza, e a reabilita ao final.
+
+--------------------------------------------------------
+ [3.1.0] - 2026-07-02
+--------------------------------------------------------
+MIGRAÇÃO — CONFERÊNCIA ORIGEM × DESTINO (reconciliação)
+- Ao final da migração, o sistema agora CONFERE automaticamente a
+  origem contra o destino e mostra o comparativo na tela, no log e
+  no relatório (RELATORIO_MIGRACAO_*.txt):
+    * Contagens: cliente, cliente_empresa (clientes vinculados),
+      UsuarioPermissao, produto, codBarras, vendaPgto.
+    * Somas: estoque (SUM proEstoqueAtual, por empresa) e valores do
+      financeiro (SUM pgtValor).
+- Cada linha recebe um status:
+    * ✅ confere — origem e destino iguais;
+    * ℹ️ diferença esperada — ex.: estoque zerado por opção do
+      usuário na migração (a explicação aparece na linha);
+    * ⚠️ divergente — com a possível causa (permissões de usuários
+      inexistentes, códigos sem produto, lançamentos pulados etc.).
+- Só confere as entidades que foram migradas na execução.
+
+--------------------------------------------------------
+ [3.1.1] - 2026-07-02
+--------------------------------------------------------
+MIGRAÇÃO — NCM/CEST faltantes (evita perda fiscal silenciosa)
+- Ao migrar Produtos, o sistema agora COPIA da origem para o destino
+  os cadastros de NCM (proNCM) e CEST (proCEST) usados pelos produtos
+  que NÃO existem no destino — assim o produto migra com o NCM/CEST
+  correto (antes ficava proNcmId/proCestId = NULL sem avisar, o que
+  impede a emissão fiscal).
+    * Copia só os códigos usados e faltantes (targeted); o id é gerado
+      pelo destino; colunas de identity e de auditoria são ignoradas.
+- A conferência pós-migração passou a incluir "produtos sem NCM
+  (proNcmId nulo)" no destino, com alerta quando > 0.
+
+--------------------------------------------------------
+ [3.1.2] - 2026-07-02
+--------------------------------------------------------
+MIGRAÇÃO — Wizard de decisões antecipadas (execução não assistida)
+- Todas as perguntas que antes apareciam DURANTE a migração passaram
+  para um ÚNICO diálogo ANTES de iniciar (wizard). Assim a migração
+  roda do início ao fim SEM interação — ideal para bases grandes.
+- O wizard coleta:
+    * Clientes: ciência da limpeza do destino (checkbox obrigatório) e
+      política de duplicados (desativar repetidos x manter todos).
+    * Produtos: estoque (migrar x zerar) e, para negativos, zerar x
+      manter os valores da origem.
+- O aviso de "acerto de estoque gerado" não interrompe mais o fluxo:
+  passou a ser registrado no log e incluído no RESUMO FINAL da migração
+  (antes abria uma caixa no meio, entre Produtos e as demais entidades).
+
+--------------------------------------------------------
+ [3.1.3] - 2026-07-03
+--------------------------------------------------------
+MIGRAÇÃO — Backup automático e FKs desabilitadas
+- BACKUP automático do banco de DESTINO antes de migrar (opção no
+  wizard, marcada por padrão): gera um .bak COPY_ONLY na pasta de
+  backup padrão do SQL Server. Se o backup falhar, a migração é
+  ABORTADA por segurança.
+- Pré-flight: ao iniciar, detecta FKs DESABILITADAS (is_disabled=1)
+  no destino — sinal de uma migração ANTERIOR interrompida (as FKs
+  ficaram sem enforcement) — e oferece REABILITÁ-LAS (com validação)
+  antes de continuar. Ignora as apenas "não confiáveis"
+  (is_not_trusted), que são normais em bancos MaxData.
+
+--------------------------------------------------------
+ [3.1.4] - 2026-07-04
+--------------------------------------------------------
+MIGRAÇÃO — Idempotência do Financeiro (não duplica)
+- Na migração de Financeiro, antes de inserir cada lançamento, o
+  sistema verifica se já existe um lançamento IGUAL no destino e, se
+  existir, PULA (não duplica). Assim, rodar a migração 2× (ex.: após
+  uma falha) não gera lançamentos repetidos.
+- Chave de duplicidade: empId + pgtClienteId + pgtValor + pgtData +
+  pgtVecmto + pgtNumDoc + pgtTipoConta.
+- O resumo do financeiro passa a mostrar "não migrados" (não
+  encontrados + já existentes). A importação por ARQUIVO continua sem
+  dedup (comportamento inalterado); o dedup vale só na migração.
+
+--------------------------------------------------------
+ [3.1.5] - 2026-07-04
+--------------------------------------------------------
+MIGRAÇÃO — Performance
+- Permissões (UsuarioPermissao) e Códigos de Barras (codBarras)
+  passaram a ser copiados com CROSS-DATABASE INSERT...SELECT (uma
+  única instrução, já que origem e destino estão na mesma instância)
+  em vez de linha a linha. Ex.: ~907 permissões em ~0,2s.
+    * A guarda de FK continua (só copia registros cujo cliId/proId
+      exista no destino); cdbProUnId inexistente vira NULL via CASE.
+- Importação/Migração de Produtos: cache em memória (por execução)
+  dos lookups de NCM/CEST (proNCM/proCEST). Como é somente leitura,
+  é seguro e elimina milhares de SELECTs repetidos em catálogos
+  grandes (o cache é limpo no início de cada importação).
+
+--------------------------------------------------------
+ [3.2.0] - 2026-07-04
+--------------------------------------------------------
+BOTÃO CANCELAR — interromper importação/migração com segurança
+- Todas as janelas (Produtos, Clientes, Financeiro e Migração)
+  ganharam um botão "⏹ Cancelar", habilitado apenas enquanto uma
+  operação está em andamento.
+- O cancelamento é COOPERATIVO e só ocorre em pontos SEGUROS:
+    * IMPORTADORES (Produtos/Clientes/Financeiro): entre registros.
+      Como o commit é feito por linha, os registros já gravados
+      permanecem e nada fica pela metade; a operação para no próximo
+      registro.
+    * MIGRAÇÃO: entre ENTIDADES. A entidade em andamento é concluída
+      inteira (mantendo o banco consistente, com as FKs reabilitadas)
+      e as entidades restantes NÃO são executadas. Não interrompe no
+      meio de uma entidade (onde há FKs desabilitadas, IDENTITY_INSERT
+      e commits em lote), justamente para não deixar o destino num
+      estado inconsistente.
+- A migração cancelada mostra título/mensagem próprios ("Migração
+  cancelada"), lista as entidades não migradas no log e só confere
+  (reconciliação origem × destino) as entidades efetivamente migradas.
+- O botão é reabilitado/rearmado automaticamente a cada nova operação.
+
+--------------------------------------------------------
+ [3.2.1] - 2026-07-04
+--------------------------------------------------------
+SEGURANÇA — Credenciais de conexão
+- A senha padrão NÃO fica mais embutida no binário. Antes o app
+  trazia 'sa'/'macro01' fixos no código (qualquer um que abrisse o
+  .exe conseguia extrair a senha). Agora só o usuário padrão 'sa'
+  (que não é segredo) é sugerido; a senha começa VAZIA e é digitada.
+- Nova opção de AUTENTICAÇÃO no diálogo "Editar credenciais":
+    * SQL Server (usuário + senha), ou
+    * Windows (autenticação integrada — Trusted_Connection, sem senha).
+  Em Windows auth, os campos de usuário/senha ficam desabilitados e
+  nada sensível é armazenado.
+- Novo "Lembrar credenciais nesta máquina": quando marcado, servidor,
+  usuário e modo de auth são salvos no max_importa.ini e a SENHA é
+  gravada CRIPTOGRAFADA via Windows DPAPI (CryptProtectData). O texto
+  cifrado só pode ser decifrado pelo MESMO usuário do Windows na MESMA
+  máquina — não fica em texto puro e não é portável para outra máquina.
+    * Sem "lembrar", a seção [Conexao] do .ini é removida (não sobra
+      nenhuma credencial em disco).
+    * A criptografia usa a API nativa do Windows via ctypes — sem
+      nenhuma dependência nova no build.
+- A connection string passou a ser montada num único ponto
+  (_montar_base_conn_str), conforme o modo de auth; login, menu e
+  migração reaproveitam a mesma base (comportamento idêntico ao anterior
+  para SQL auth).
+
+--------------------------------------------------------
+ [3.2.2] - 2026-07-04
+--------------------------------------------------------
+LOGIN — Botão "Confirmar Banco e Avançar" só após validar
+- O botão "Confirmar Banco e Avançar" agora aparece SOMENTE depois que
+  a conexão é validada (credenciais OK e bancos listados). Antes ele
+  ficava sempre visível, apenas desabilitado.
+    * Some novamente ao trocar as credenciais (Editar credenciais),
+      em falha de conexão ou quando nenhum banco é encontrado —
+      deixando claro que é preciso conectar de novo.
+
+--------------------------------------------------------
+ [3.3.0] - 2026-07-04
+--------------------------------------------------------
+PROGRESSO POR REGISTRO — contador "X de Y (NN%)"
+- Além da barra, agora há um RÓTULO que mostra em tempo real quantos
+  registros já foram processados, ex.: "1.250 de 8.000 (15%)".
+    * Vale para os 3 importadores (Produtos, Clientes, Financeiro),
+      inclusive no UPDATE e no UPDATE por CPF/CNPJ.
+    * Na MIGRAÇÃO, o rótulo mostra a etapa atual com o nome da
+      entidade, ex.: "Clientes — 1 de 5 (20%)".
+- O rótulo é reiniciado ("iniciando...") a cada nova operação e a
+  atualização continua thread-safe (agendada na GUI).
+
+--------------------------------------------------------
+ [3.4.0] - 2026-07-04
+--------------------------------------------------------
+LOGS ESTRUTURADOS — exportacao em JSON e CSV (alem do .txt)
+- Ao concluir cada importacao (Produtos/Clientes/Financeiro), alem
+  do RELATORIO_*.txt, agora sao gerados na pasta de logs:
+    * RESULTADO_<OP>_<data_hora>.json — resumo estruturado: versao,
+      banco, contagens (inseridos/pulados/erros), lista de itens com
+      erro e, no Financeiro, os CPF/CNPJ nao encontrados.
+    * ERROS_<OP>_<data_hora>.csv — itens com erro em CSV (abre direto
+      no Excel; UTF-8 com BOM p/ acentos), quando houver erros.
+- Na MIGRACAO, alem do RELATORIO_MIGRACAO_*.txt, e gerado o
+  RESULTADO_MIGRACAO_<data_hora>.json com os TOTAIS por entidade,
+  origem e se foi cancelada.
+- A exportacao e "best-effort": se falhar, apenas registra um aviso
+  no log e NAO interrompe a importacao/migracao.
+
+--------------------------------------------------------
+ [3.5.0] - 2026-07-04
+--------------------------------------------------------
+AUDITORIA NO DESTINO — tabela MaxImporta_Auditoria
+- Ao final de cada MIGRACAO, o sistema registra no proprio banco de
+  DESTINO o que foi feito, numa tabela criada automaticamente:
+  dbo.MaxImporta_Auditoria (prefixo proprio, nao colide com o MaxData).
+- Uma linha POR ENTIDADE migrada, com: data/hora, versao do app,
+  origem, destino, usuario SQL (SUSER_SNAME), entidade, inseridos,
+  pulados, erros, se foi cancelada, e um 'audSessao' (identificador
+  que agrupa as entidades de uma mesma execucao).
+- A tabela e criada na primeira migracao e reaproveitada nas demais
+  (historico acumulado). O registro e "best-effort": se falhar, apenas
+  registra um aviso no log e NAO interrompe a migracao.
+- Consulta util:  SELECT * FROM MaxImporta_Auditoria ORDER BY audDataHora DESC
+
+--------------------------------------------------------
+ [3.6.0] - 2026-07-05
+--------------------------------------------------------
+MAPEAMENTO DE COLUNAS — feedback visual (importação por arquivo)
+- Nas telas de importacao (Produtos, Clientes, Financeiro), cada campo
+  do mapeamento agora mostra um INDICADOR ao lado do nome:
+    * ✓ (verde) = campo mapeado a uma coluna do arquivo;
+    * ✗ (vermelho) = campo OBRIGATORIO ainda nao mapeado;
+    * — (cinza) = campo opcional nao mapeado.
+- Alem do indicador, a LINHA inteira do campo fica com um VERDE SUAVE
+  quando mapeada (e volta a cor original ao desmapear) — reforca de
+  relance o que ja esta pronto.
+- Abaixo da lista, um RESUMO informa em tempo real:
+    * "✓ X/Y campos mapeados — todos os obrigatorios OK." ou
+    * "⚠ X/Y campos mapeados — faltam obrigatorios: <lista>".
+- Atualiza automaticamente a cada selecao de coluna e tambem apos o
+  auto-mapeamento (ao carregar o arquivo), deixando claro de imediato
+  o que falta antes de iniciar a importacao.
+
+--------------------------------------------------------
+ [3.6.1] - 2026-07-05
+--------------------------------------------------------
+VISUAL — tema "Clean Corporate" (paleta claro/escuro)
+- Retematizacao da interface para um visual mais limpo/corporativo,
+  sem alterar NENHUMA funcao/logica (so cores, tons e fonte de log):
+    * Paleta centralizada no mi_config.py agora usa tuplas (claro,
+      escuro) — o CustomTkinter troca sozinho conforme o modo.
+    * Vermelho da MARCA MaxData mantido (#CC0000) no claro; no escuro
+      usa uma versao mais viva (#E5433D) para contraste. O vermelho
+      deixa de ser "plano de fundo" e vira acento.
+    * Fundos de linha obrigatoria/chave ficaram em vermelho SUAVE
+      (fim do rosa saturado); texto principal mais nitido; verde de
+      "campo mapeado" mais discreto.
+    * Modo padrao continua CLARO; o botao de tema (menu) alterna
+      claro/escuro e agora ambos ficam consistentes.
+    * Log em fonte Consolas (mono mais limpa) no lugar de Courier.
+- Nenhuma janela, variavel, conexao ou regra foi alterada.
+
+--------------------------------------------------------
+ [Próxima versão] - a definir
+--------------------------------------------------------
+- (descrever aqui a próxima alteração)

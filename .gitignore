@@ -1,0 +1,39 @@
+# ── Build / PyInstaller ────────────────────────────────────────────────
+build/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# ── Executável e pacotes (artefatos — não versionar) ───────────────────
+*.exe
+*.rar
+*.zip
+*.7z
+
+# ── Config local com credenciais (NUNCA versionar) ─────────────────────
+max_importa.ini
+
+# ── Logs e relatórios gerados em runtime ───────────────────────────────
+Log/
+*.log
+RELATORIO_*.txt
+RESULTADO_*.json
+ERROS_*.txt
+ERROS_*.csv
+
+# ── Backups / dumps / bancos ───────────────────────────────────────────
+Backup/
+BD_ZERO*/
+*.bak
+*.MAX
+
+# ── Arquivos de importação já processados (renomeados pelo app) ────────
+*_IMPORTADO_OK_*
+*_IMPORTADO_COM_ERROS_*
+
+# ── SO / editores ──────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/

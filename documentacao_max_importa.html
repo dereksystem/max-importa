@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Max_Importa — Documentação Técnica</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #080c14;
+  --surface:  #0d1421;
+  --card:     #111927;
+  --border:   #1a2640;
+  --border2:  #243352;
+  --blue:     #3b82f6;
+  --blue-d:   #1d4ed8;
+  --green:    #10b981;
+  --amber:    #f59e0b;
+  --red:      #ef4444;
+  --purple:   #a855f7;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --muted2:   #94a3b8;
+  --mono:     'IBM Plex Mono', monospace;
+  --display:  'Syne', sans-serif;
+  --body:     'DM Sans', sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.7;overflow-x:hidden}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.sidebar{
+  position:fixed;top:0;left:0;width:260px;height:100vh;
+  background:var(--surface);border-right:1px solid var(--border);
+  overflow-y:auto;z-index:200;padding:0 0 40px;
+}
+.sidebar-logo{
+  padding:28px 24px 20px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:12px;
+}
+.sidebar-logo .app-name{
+  font-family:var(--mono);font-size:18px;font-weight:600;
+  color:#fff;letter-spacing:-.02em;
+}
+.sidebar-logo .app-sub{
+  font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:.05em;
+}
+.sidebar-logo .version{
+  display:inline-block;font-family:var(--mono);font-size:10px;
+  background:rgba(59,130,246,.15);color:var(--blue);
+  border:1px solid rgba(59,130,246,.3);border-radius:4px;
+  padding:2px 7px;margin-top:8px;
+}
+.nav-section{padding:8px 24px 4px;font-family:var(--mono);font-size:10px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.nav-item{display:flex;align-items:center;gap:10px;
+  padding:8px 24px;font-size:13px;color:var(--muted2);
+  text-decoration:none;border-left:2px solid transparent;
+  transition:all .2s;cursor:pointer;}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.03);}
+.nav-item.active{color:var(--blue);border-left-color:var(--blue);
+  background:rgba(59,130,246,.07);}
+.nav-item .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+
+/* ── Main ────────────────────────────────────────────────── */
+.main{margin-left:260px;min-height:100vh;}
+
+/* ── Hero ────────────────────────────────────────────────── */
+.hero{
+  position:relative;overflow:hidden;
+  padding:80px 72px 64px;
+  background:linear-gradient(135deg,#08101e 0%,#0d1729 60%,#0a1220 100%);
+  border-bottom:1px solid var(--border);
+}
+.hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 55% 70% at 75% 40%,rgba(59,130,246,.08) 0%,transparent 70%);
+}
+.hero::after{
+  content:'MAX_IMPORTA';
+  position:absolute;right:-20px;top:50%;transform:translateY(-50%);
+  font-family:var(--mono);font-size:140px;font-weight:600;
+  color:rgba(255,255,255,.018);letter-spacing:-.05em;white-space:nowrap;
+  pointer-events:none;
+}
+.hero-tag{
+  font-family:var(--mono);font-size:11px;color:var(--blue);
+  letter-spacing:.2em;text-transform:uppercase;margin-bottom:18px;
+}
+.hero h1{
+  font-family:var(--display);font-size:52px;font-weight:800;
+  color:#fff;line-height:1.08;margin-bottom:20px;
+  letter-spacing:-.03em;
+}
+.hero h1 span{color:var(--blue);}
+.hero p{color:var(--muted2);font-size:17px;max-width:560px;
+  font-weight:300;line-height:1.65;}
+.hero-chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px;}
+.chip{
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+  padding:5px 12px;border-radius:20px;border:1px solid;
+}
+.chip-blue{color:var(--blue);border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.08);}
+.chip-green{color:var(--green);border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.08);}
+.chip-amber{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08);}
+.chip-purple{color:var(--purple);border-color:rgba(168,85,247,.4);background:rgba(168,85,247,.08);}
+
+/* ── Content ─────────────────────────────────────────────── */
+.content{padding:60px 72px;max-width:960px;}
+
+/* ── Section titles ──────────────────────────────────────── */
+.section-anchor{padding-top:80px;margin-top:-40px;}
+.section-label{
+  font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--blue);margin-bottom:10px;
+}
+.section-title{
+  font-family:var(--display);font-size:32px;font-weight:700;
+  color:#fff;line-height:1.2;margin-bottom:10px;letter-spacing:-.02em;
+}
+.section-desc{color:var(--muted2);font-size:15px;max-width:620px;
+  margin-bottom:32px;font-weight:300;}
+.divider{height:1px;background:var(--border);margin:56px 0;}
+
+/* ── Cards ───────────────────────────────────────────────── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:32px;}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  padding:20px 22px;transition:border-color .2s,transform .2s;
+}
+.card:hover{border-color:var(--border2);transform:translateY(-2px);}
+.card-icon{font-size:22px;margin-bottom:12px;}
+.card-title{font-family:var(--display);font-size:14px;font-weight:700;
+  color:#fff;margin-bottom:6px;}
+.card-body{font-size:13px;color:var(--muted2);line-height:1.6;}
+
+/* ── Steps ───────────────────────────────────────────────── */
+.steps{display:flex;flex-direction:column;gap:0;}
+.step{display:flex;gap:24px;position:relative;padding-bottom:32px;}
+.step:last-child{padding-bottom:0;}
+.step:not(:last-child)::before{
+  content:'';position:absolute;left:19px;top:42px;
+  width:2px;bottom:0;background:var(--border);
+}
+.step-num{
+  width:40px;height:40px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:14px;font-weight:600;
+  background:var(--card);border:2px solid var(--blue);color:var(--blue);
+  position:relative;z-index:1;
+}
+.step-body{flex:1;padding-top:8px;}
+.step-title{font-family:var(--display);font-size:16px;font-weight:700;
+  color:#fff;margin-bottom:6px;}
+.step-text{font-size:14px;color:var(--muted2);line-height:1.65;}
+
+/* ── Module blocks ───────────────────────────────────────── */
+.module{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;margin-bottom:20px;overflow:hidden;
+}
+.module-header{
+  display:flex;align-items:center;gap:14px;
+  padding:18px 24px;border-bottom:1px solid var(--border);
+}
+.module-icon{font-size:20px;}
+.module-name{font-family:var(--display);font-size:17px;font-weight:700;color:#fff;}
+.module-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+  padding:3px 9px;border-radius:10px;margin-left:auto;
+}
+.tag-insert{background:rgba(16,185,129,.15);color:var(--green);}
+.tag-update{background:rgba(59,130,246,.15);color:var(--blue);}
+.tag-both{background:rgba(168,85,247,.15);color:var(--purple);}
+.module-body{padding:20px 24px;}
+.module-body p{font-size:14px;color:var(--muted2);margin-bottom:14px;}
+
+/* ── Field tables ────────────────────────────────────────── */
+.field-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;}
+.field-table th{
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);padding:8px 12px;
+  text-align:left;border-bottom:1px solid var(--border);
+}
+.field-table td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+.field-table tr:last-child td{border-bottom:none;}
+.field-table tr:hover td{background:rgba(255,255,255,.02);}
+.fname{font-family:var(--mono);font-size:12px;color:var(--text);}
+.fbadge{
+  display:inline-block;font-family:var(--mono);font-size:9px;
+  letter-spacing:.06em;padding:2px 7px;border-radius:8px;
+  font-weight:600;white-space:nowrap;
+}
+.b-req{background:rgba(239,68,68,.15);color:var(--red);}
+.b-lkp{background:rgba(168,85,247,.15);color:var(--purple);}
+.b-auto{background:rgba(16,185,129,.15);color:var(--green);}
+.b-opt{background:rgba(100,116,139,.15);color:var(--muted2);}
+.b-key{background:rgba(245,158,11,.15);color:var(--amber);}
+.fdesc{color:var(--muted2);font-size:13px;}
+.ftype{font-family:var(--mono);font-size:11px;color:var(--muted);}
+
+/* ── Callout boxes ───────────────────────────────────────── */
+.callout{
+  display:flex;gap:14px;padding:16px 18px;border-radius:10px;
+  margin:20px 0;border-left:3px solid;
+}
+.callout-warn{background:rgba(245,158,11,.06);border-color:var(--amber);}
+.callout-info{background:rgba(59,130,246,.06);border-color:var(--blue);}
+.callout-tip{background:rgba(16,185,129,.06);border-color:var(--green);}
+.callout-danger{background:rgba(239,68,68,.06);border-color:var(--red);}
+.callout-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+.callout-body{font-size:13px;color:var(--muted2);line-height:1.65;}
+.callout-body strong{color:var(--text);}
+
+/* ── Code blocks ─────────────────────────────────────────── */
+.code-block{
+  background:#060a10;border:1px solid var(--border);border-radius:10px;
+  padding:18px 20px;margin:16px 0;overflow-x:auto;
+}
+.code-block code{font-family:var(--mono);font-size:12px;color:#7dd3fc;
+  line-height:1.8;white-space:pre;}
+.code-label{font-family:var(--mono);font-size:10px;color:var(--muted);
+  letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
+
+/* ── Flow diagram ────────────────────────────────────────── */
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:0;margin:24px 0;}
+.flow-box{
+  background:var(--card);border:1px solid var(--border2);border-radius:10px;
+  padding:12px 18px;font-size:13px;color:var(--text);
+  font-family:var(--mono);white-space:nowrap;
+}
+.flow-box.accent{border-color:var(--blue);color:var(--blue);
+  background:rgba(59,130,246,.08);}
+.flow-box.red{border-color:var(--red);color:var(--red);
+  background:rgba(239,68,68,.08);}
+.flow-box.green{border-color:var(--green);color:var(--green);
+  background:rgba(16,185,129,.08);}
+.flow-arrow{color:var(--muted);font-size:18px;padding:0 10px;}
+
+/* ── Rules list ──────────────────────────────────────────── */
+.rules{list-style:none;display:flex;flex-direction:column;gap:10px;margin:16px 0;}
+.rules li{
+  display:flex;gap:12px;font-size:14px;color:var(--muted2);
+  background:var(--card);border:1px solid var(--border);
+  border-radius:8px;padding:12px 16px;
+}
+.rules li .rule-icon{font-size:16px;flex-shrink:0;}
+.rules li strong{color:var(--text);}
+
+/* ── Error table ─────────────────────────────────────────── */
+.err-table{width:100%;border-collapse:collapse;font-size:13px;}
+.err-table th{
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);
+  padding:8px 14px;border-bottom:2px solid var(--border);text-align:left;
+}
+.err-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--muted2);vertical-align:top;}
+.err-table tr:last-child td{border-bottom:none;}
+.err-code{font-family:var(--mono);font-size:12px;color:var(--red);}
+.err-fix{color:var(--green);font-size:12px;}
+
+/* ── UI Screenshot blocks ────────────────────────────────── */
+.ui-block{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  overflow:hidden;margin-bottom:20px;
+}
+.ui-block-header{
+  padding:12px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:11px;color:var(--muted);
+  letter-spacing:.08em;text-transform:uppercase;
+}
+.ui-badge{
+  font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:6px;font-weight:600;
+}
+.ui-badge-red{background:rgba(239,68,68,.2);color:#f87171;}
+.ui-badge-gray{background:rgba(100,116,139,.2);color:var(--muted2);}
+.ui-block-body{padding:16px 20px;font-size:13px;color:var(--muted2);line-height:1.7;}
+.ui-block-body strong{color:var(--text);}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+/* ── Print ───────────────────────────────────────────────── */
+@media print{
+  .sidebar{display:none;}
+  .main{margin-left:0;}
+  .hero::after{display:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="app-name">Max_Importa</div>
+    <div class="app-sub">DOCUMENTAÇÃO TÉCNICA</div>
+    <div class="version">v3.1.5 — 2026</div>
+  </div>
+
+  <div class="nav-section">Visão Geral</div>
+  <a class="nav-item active" href="#overview">
+    <span class="dot" style="background:var(--blue)"></span>Sobre o sistema
+  </a>
+  <a class="nav-item" href="#requisitos">
+    <span class="dot" style="background:var(--muted)"></span>Requisitos
+  </a>
+  <a class="nav-item" href="#instalacao">
+    <span class="dot" style="background:var(--muted)"></span>Instalação
+  </a>
+
+  <div class="nav-section">Interface</div>
+  <a class="nav-item" href="#login">
+    <span class="dot" style="background:var(--blue)"></span>Tela de Login
+  </a>
+  <a class="nav-item" href="#menu">
+    <span class="dot" style="background:var(--blue)"></span>Menu Principal
+  </a>
+  <a class="nav-item" href="#logs-config">
+    <span class="dot" style="background:var(--blue)"></span>Pasta de Logs
+  </a>
+  <a class="nav-item" href="#mapeamento">
+    <span class="dot" style="background:var(--blue)"></span>Mapeamento de Campos
+  </a>
+
+  <div class="nav-section">Módulos</div>
+  <a class="nav-item" href="#produtos">
+    <span class="dot" style="background:#3b82f6"></span>📦 Produtos
+  </a>
+  <a class="nav-item" href="#clientes">
+    <span class="dot" style="background:#10b981"></span>👥 Clientes/Fornec.
+  </a>
+  <a class="nav-item" href="#financeiro">
+    <span class="dot" style="background:#f59e0b"></span>💰 Financeiro
+  </a>
+  <a class="nav-item" href="#migracao">
+    <span class="dot" style="background:#ef4444"></span>🔄 Migração Max→Max
+  </a>
+
+  <div class="nav-section">Referência</div>
+  <a class="nav-item" href="#arquivos">
+    <span class="dot" style="background:var(--muted)"></span>Formatos de arquivo
+  </a>
+  <a class="nav-item" href="#logs">
+    <span class="dot" style="background:var(--muted)"></span>Logs e relatórios
+  </a>
+  <a class="nav-item" href="#erros">
+    <span class="dot" style="background:var(--red)"></span>Erros comuns
+  </a>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════ MAIN -->
+<main class="main">
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-tag">Documentação Técnica — v3.1.5</div>
+  <h1>Max_<span>Importa</span></h1>
+  <p>Importador de dados para o sistema MaxManager. Centraliza a importação de Produtos, Clientes/Fornecedores e lançamentos Financeiros via arquivos CSV ou TXT, e a <strong>Migração entre Bancos MaxData</strong> (banco → banco, na mesma instância SQL), com interface visual MaxData, mapeamento automático de colunas e rastreabilidade completa por logs.</p>
+  <div class="hero-chips">
+    <div class="chip chip-blue">Python 3.11+</div>
+    <div class="chip chip-blue">CustomTkinter 5.2+</div>
+    <div class="chip chip-blue">pyodbc 5.3+</div>
+    <div class="chip chip-green">SQL Server</div>
+    <div class="chip chip-green">ODBC Driver 17</div>
+    <div class="chip chip-amber">Windows 10/11</div>
+    <div class="chip chip-purple">MaxManager ERP</div>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ───────────────────────────────────────── SOBRE -->
+<div class="section-anchor" id="overview"></div>
+<div class="section-label">01 — Visão Geral</div>
+<h2 class="section-title">Sobre o Sistema</h2>
+<p class="section-desc">O Max_Importa é uma aplicação desktop desenvolvida em Python que permite importar grandes volumes de dados para o banco de dados do MaxManager de forma rápida, validada e rastreável.</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-icon">📦</div>
+    <div class="card-title">Produtos</div>
+    <div class="card-body">INSERT e UPDATE nas tabelas produto e produto_empresa. Lookup automático de unidade (produtoUn), NCM, CEST, fabricante, grupo, subgrupo e código de barras (codBarras).</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">👥</div>
+    <div class="card-title">Clientes / Fornecedores</div>
+    <div class="card-body">INSERT e UPDATE nas tabelas cliente e cliente_empresa. No UPDATE, pode usar CPF/CNPJ como chave alternativa quando cliId não estiver disponível.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">💰</div>
+    <div class="card-title">Financeiro</div>
+    <div class="card-body">INSERT de lançamentos na tabela vendaPgto. Localiza o cliente pelo CPF/CNPJ e exporta em arquivo .txt os registros não encontrados para correção.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">🔄</div>
+    <div class="card-title">Migração entre Bancos</div>
+    <div class="card-body">Copia Clientes, Permissões, Produtos e Financeiro de um banco MaxData para outro da mesma instância SQL, sem arquivo — com tratamento de estoque, duplicados e acerto de estoque automático.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">🗂</div>
+    <div class="card-title">Logs e Relatórios</div>
+    <div class="card-body">Cada importação gera um arquivo .log em tempo real e um relatório .txt de fechamento, salvos na pasta configurada pelo usuário.</div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── REQUISITOS -->
+<div class="section-anchor" id="requisitos"></div>
+<div class="section-label">02 — Pré-Requisitos</div>
+<h2 class="section-title">Requisitos do Sistema</h2>
+<p class="section-desc">Antes de executar ou compilar o Max_Importa, verifique os itens abaixo.</p>
+
+<ul class="rules">
+  <li><span class="rule-icon">🖥</span><div><strong>Sistema Operacional:</strong> Windows 10 ou Windows 11 (64 bits)</div></li>
+  <li><span class="rule-icon">🐍</span><div><strong>Python 3.10 ou superior</strong> — necessário apenas para gerar o .exe. <strong>Instalação automática:</strong> se o Python não estiver presente, o próprio <code style="font-family:var(--mono);font-size:12px;background:#111;padding:1px 5px;border-radius:3px;">BUILD.bat</code> o instala (via winget ou download oficial, já com "Add to PATH") e se reabre para aplicar o PATH.</div></li>
+  <li><span class="rule-icon">🔌</span><div><strong>ODBC Driver 17 for SQL Server</strong> — obrigatório em qualquer máquina que execute o Max_Importa. Baixe em <em>https://aka.ms/odbc17</em></div></li>
+  <li><span class="rule-icon">🗄</span><div><strong>SQL Server</strong> com as tabelas do MaxManager já criadas e acessíveis na rede (instância local ou remota).</div></li>
+  <li><span class="rule-icon">📦</span><div><strong>Dependências Python:</strong> customtkinter, pyodbc, pandas, pillow, pyinstaller — instaladas automaticamente pelo BUILD.bat.</div></li>
+</ul>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── INSTALAÇÃO -->
+<div class="section-anchor" id="instalacao"></div>
+<div class="section-label">03 — Instalação</div>
+<h2 class="section-title">Gerando o Executável</h2>
+<p class="section-desc">O Max_Importa é distribuído como código-fonte. O BUILD.bat compila tudo em um único arquivo .exe sem necessidade de Python instalado para rodar.</p>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Organizar os arquivos</div>
+      <div class="step-text">Coloque na mesma pasta: <code style="font-family:var(--mono);font-size:12px;">max_importa.py</code>, <code style="font-family:var(--mono);font-size:12px;">logo_maxdata.png</code>, <code style="font-family:var(--mono);font-size:12px;">max_x.ico</code>, <code style="font-family:var(--mono);font-size:12px;">max_importa.spec</code> e <code style="font-family:var(--mono);font-size:12px;">BUILD.bat</code></div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Executar o BUILD.bat</div>
+      <div class="step-text">Dê <strong>duplo clique</strong> no BUILD.bat. Se for aberto como Administrador, ele <strong>se reabre sozinho sem privilégios</strong> (o PyInstaller não roda elevado) — sem precisar fechar e abrir de novo. Se o <strong>Python não estiver instalado</strong>, o script o instala automaticamente. Depois instala as dependências e gera o executável. O processo leva de 2 a 5 minutos na primeira vez.</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Resultado</div>
+      <div class="step-text">Ao final, o arquivo <code style="font-family:var(--mono);font-size:12px;">Max_Importa.exe</code> é gerado na mesma pasta. Este único arquivo já inclui todas as dependências.</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Primeiro uso — pasta de logs</div>
+      <div class="step-text">Na primeira execução, a subpasta <code style="font-family:var(--mono);font-size:12px;">Log\</code> é criada automaticamente no mesmo diretório do executável. O caminho padrão é <code style="font-family:var(--mono);font-size:12px;">C:\Max\MaxImporta\Log\</code>. Esta configuração é salva em <code style="font-family:var(--mono);font-size:12px;">max_importa.ini</code> e pode ser alterada no menu principal a qualquer momento.</div>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-info" style="margin-top:24px;">
+  <div class="callout-icon">🛡️</div>
+  <div class="callout-body"><strong>Executou como Administrador?</strong> Sem problema. O PyInstaller não roda com privilégios elevados, então o BUILD.bat detecta a elevação e <strong>se reabre automaticamente sem admin</strong> (via explorer.exe), com proteção contra loop. O ideal continua sendo o duplo clique normal, mas não trava mais se abrir como admin.</div>
+</div>
+
+<div class="callout callout-tip" style="margin-top:16px;">
+  <div class="callout-icon">🐍</div>
+  <div class="callout-body"><strong>Python ausente?</strong> O BUILD.bat instala o Python automaticamente — tenta primeiro o <code style="font-family:var(--mono);font-size:11px;">winget</code> e, se não houver, baixa o instalador oficial e roda em modo silencioso com "Add to PATH". Em seguida se reabre para o PATH passar a valer. Se a instalação falhar (sem internet, por exemplo), exibe orientação para instalar manualmente.</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── LOGIN -->
+<div class="section-anchor" id="login"></div>
+<div class="section-label">04 — Interface</div>
+<h2 class="section-title">Tela de Login</h2>
+<p class="section-desc">A tela inicial conecta o sistema ao SQL Server em três etapas e permite selecionar o banco de dados de destino.</p>
+
+<div class="flow" style="margin-bottom:24px;">
+  <div class="flow-box accent">① Instância SQL</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box accent">② Conectar</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box accent">③ Banco</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box green">Menu Principal</div>
+</div>
+
+<div class="ui-block">
+  <div class="ui-block-header">🔌 Seção: Conexão com SQL Server</div>
+  <div class="ui-block-body">
+    <strong>Servidor:</strong> exibe a instância atual (padrão: <code style="font-family:var(--mono);font-size:12px;">localhost\SQLEXPRESS</code>). Clique em <strong>"Editar credenciais"</strong> para alterar servidor, usuário e senha.<br><br>
+    <strong>Botão "Conectar e Listar Bancos":</strong> testa a conexão ODBC e preenche a lista de bancos disponíveis na instância. Padrão de acesso: <code style="font-family:var(--mono);font-size:12px;">sa / macro01</code>.
+  </div>
+</div>
+
+<div class="ui-block">
+  <div class="ui-block-header">🗄 Seção: Selecionar Banco de Dados</div>
+  <div class="ui-block-body">
+    Separada da seção anterior por uma linha vermelha. Lista apenas bancos <code style="font-family:var(--mono);font-size:12px;">ONLINE</code> excluindo os do sistema (master, tempdb, model, msdb).<br><br>
+    <strong>Botão "✔ Confirmar Banco e Avançar"</strong> (vermelho): abre o Menu Principal na cor padrão MaxData. Fica desativado até uma conexão bem-sucedida.
+  </div>
+</div>
+
+<ul class="rules">
+  <li><span class="rule-icon">🔐</span><div><strong>Editar Credenciais:</strong> abre um diálogo com campos para Instância, Usuário e Senha. O botão "✔ Salvar" aplica as mudanças sem fechar a tela de login.</div></li>
+  <li><span class="rule-icon">⚠️</span><div><strong>Status:</strong> exibido abaixo do botão Confirmar em cinza neutro. Muda para verde ao conectar com sucesso e para vermelho em caso de falha.</div></li>
+</ul>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── MENU -->
+<div class="section-anchor" id="menu"></div>
+<div class="section-label">05 — Menu Principal</div>
+<h2 class="section-title">Menu de Módulos</h2>
+<p class="section-desc">Após o login, o menu exibe dois painéis lado a lado separando as operações de atualização e inserção, com o banco ativo identificado em badge.</p>
+
+<div class="ui-block">
+  <div class="ui-block-header">
+    📋 Layout de 2 colunas
+    <span class="ui-badge ui-badge-gray" style="margin-left:auto">◄ ATUALIZAR</span>
+    &nbsp;
+    <span class="ui-badge ui-badge-red">► INSERIR</span>
+  </div>
+  <div class="ui-block-body">
+    <strong>Coluna esquerda — ATUALIZAR (cinza):</strong> Produtos →, Clientes / Forn. →. O botão Financeiro aparece desativado com a nota "Somente INSERT".<br><br>
+    <strong>Coluna direita — INSERIR (vermelho):</strong> Produtos →, Clientes / Forn. →, Financeiro →. Todos os botões redirecionam para a janela de importação já configurada para INSERT.<br><br>
+    <strong>Badge do banco ativo:</strong> exibido abaixo do título como <code style="font-family:var(--mono);font-size:11px;"> 🗄 NOME_DO_BANCO </code> em cinza arredondado. Indica visualmente o banco conectado sem ocupar espaço de texto.
+  </div>
+</div>
+
+<ul class="rules">
+  <li><span class="rule-icon">⚙</span><div><strong>Configurar pasta de logs:</strong> abre o diálogo de configuração do diretório onde logs e relatórios são salvos. Pode ser alterado a qualquer momento sem reiniciar o programa.</div></li>
+  <li><span class="rule-icon">↩</span><div><strong>Voltar / Trocar Banco:</strong> fecha o menu e retorna à tela de login, mantendo a conexão ao servidor mas permitindo trocar de banco.</div></li>
+  <li><span class="rule-icon">🌙</span><div><strong>Tema ☀️ / 🌙:</strong> alterna entre tema claro (padrão) e escuro em tempo real. Todas as cores de texto se adaptam automaticamente ao tema escolhido.</div></li>
+</ul>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── PASTA DE LOGS -->
+<div class="section-anchor" id="logs-config"></div>
+<div class="section-label">06 — Configuração de Logs</div>
+<h2 class="section-title">Pasta de Logs e Relatórios</h2>
+<p class="section-desc">O Max_Importa salva todos os arquivos de log e relatório em uma pasta configurável pelo usuário, persistida no arquivo <code style="font-family:var(--mono);font-size:13px;">max_importa.ini</code>.</p>
+
+<div class="ui-block">
+  <div class="ui-block-header">⚙ Diálogo: Configurar pasta de logs</div>
+  <div class="ui-block-body">
+    Acessível pelo botão <strong>"⚙ Configurar pasta de logs"</strong> no menu principal. Exibe o caminho atual e permite:<br><br>
+    • Campo de texto editável com o caminho completo da pasta<br>
+    • Botão <strong>📂</strong> para navegar e selecionar a pasta pelo explorador<br>
+    • Botão <strong>"✔ Salvar"</strong> — grava em <code style="font-family:var(--mono);font-size:11px;">max_importa.ini</code> e cria a pasta imediatamente se não existir<br>
+    • Botão <strong>"↺ Restaurar caminho padrão"</strong> — restaura para <code style="font-family:var(--mono);font-size:11px;">C:\Max\MaxImporta\Log\</code>
+  </div>
+</div>
+
+<div class="code-block">
+  <div class="code-label">Estrutura do max_importa.ini</div>
+  <code>[Paths]
+log_dir = C:\Max\MaxImporta\Log</code>
+</div>
+
+<ul class="rules">
+  <li><span class="rule-icon">📁</span><div><strong>Pasta padrão:</strong> <code style="font-family:var(--mono);font-size:12px;">C:\Max\MaxImporta\Log\</code> — criada automaticamente na primeira execução se não existir.</div></li>
+  <li><span class="rule-icon">📄</span><div><strong>max_importa.ini:</strong> salvo na mesma pasta do executável. Se apagado, a pasta padrão é usada na próxima execução e o arquivo é recriado ao salvar.</div></li>
+  <li><span class="rule-icon">🔒</span><div><strong>Independência por janela:</strong> cada janela de importação aberta cria seu próprio logger isolado — múltiplas janelas abertas na mesma sessão não interferem nos arquivos de log umas das outras.</div></li>
+</ul>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── MAPEAMENTO -->
+<div class="section-anchor" id="mapeamento"></div>
+<div class="section-label">07 — Mapeamento</div>
+<h2 class="section-title">Como Funciona o Mapeamento de Campos</h2>
+<p class="section-desc">Após selecionar o arquivo, o sistema detecta automaticamente as colunas e tenta mapear por nome idêntico. Corrija o que for necessário antes de importar.</p>
+
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Selecionar o arquivo</div>
+      <div class="step-text">Clique em <strong>"📂 Selecionar CSV / TXT"</strong>. O sistema aceita arquivos separados por tabulação, ponto-e-vírgula ou vírgula — o separador é detectado automaticamente pela primeira linha do arquivo.</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Auto-mapeamento</div>
+      <div class="step-text">Colunas do arquivo com o mesmo nome do campo do banco são mapeadas automaticamente. As demais ficam como <code style="font-family:var(--mono);font-size:12px;">[ ignorar ]</code> para seleção manual.</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <div class="step-title">Ajuste manual no grid</div>
+      <div class="step-text">O grid exibe todos os campos com fundo alternado (claro/padrão) nos campos opcionais para facilitar a leitura. Campos <span class="fbadge b-req">OBRIGATÓRIO</span> têm fundo rosa, o campo <span class="fbadge b-key">CHAVE</span> tem fundo amarelo claro. Para cada campo, selecione a coluna correspondente no combobox.</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <div class="step-title">Validação pré-importação</div>
+      <div class="step-text">Ao clicar em <strong>"🚀 INICIAR IMPORTAÇÃO"</strong>, o sistema valida todos os campos obrigatórios em todas as linhas antes de iniciar. Qualquer valor vazio, NULL, NONE ou NAN em campo obrigatório bloqueia a importação e exibe as linhas com problema.</div>
+    </div>
+  </div>
+</div>
+
+<div class="cards" style="margin-top:24px;">
+  <div class="card"><div class="card-icon">🟡</div><div class="card-title">CHAVE</div><div class="card-body">Campo de identificação primária (proId / cliId). Regras especiais de validação e geração automática por IDENTITY.</div></div>
+  <div class="card"><div class="card-icon">🔴</div><div class="card-title">OBRIGATÓRIO</div><div class="card-body">Deve ser mapeado e preenchido em todas as linhas. Importação bloqueada se houver valor vazio ou NULL.</div></div>
+  <div class="card"><div class="card-icon">🟣</div><div class="card-title">LOOKUP</div><div class="card-body">Consultado em tabela auxiliar (ex: produtoUn, proNCM). O valor precisa existir no banco de dados.</div></div>
+  <div class="card"><div class="card-icon">⚫</div><div class="card-title">OPCIONAL</div><div class="card-body">Pode ficar em [ ignorar ]. O sistema grava NULL quando não informado ou quando o valor é vazio.</div></div>
+</div>
+
+<div class="ui-block">
+  <div class="ui-block-header">🏷 Badge de Operação</div>
+  <div class="ui-block-body">
+    Cada janela de importação exibe no cabeçalho um badge colorido indicando a operação selecionada no menu:<br><br>
+    <span class="ui-badge ui-badge-red">► INSERIR</span> &nbsp; vermelho — operação INSERT<br>
+    <span class="ui-badge ui-badge-gray">◄ ATUALIZAR</span> &nbsp; cinza — operação UPDATE<br><br>
+    O badge não pode ser alterado dentro da janela. Para trocar a operação, volte ao menu e escolha o botão correspondente.
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── PRODUTOS -->
+<div class="section-anchor" id="produtos"></div>
+<div class="section-label">08 — Módulo Produtos</div>
+<h2 class="section-title">📦 Importação de Produtos</h2>
+<p class="section-desc">Importa dados nas tabelas <code style="font-family:var(--mono);font-size:13px;">produto</code> e <code style="font-family:var(--mono);font-size:13px;">produto_empresa</code>. Suporta INSERT e UPDATE.</p>
+
+<div class="module">
+  <div class="module-header">
+    <div class="module-icon">📋</div>
+    <div class="module-name">Todos os Campos Mapeáveis</div>
+    <span class="module-tag tag-both">INSERT + UPDATE</span>
+  </div>
+  <div class="module-body">
+    <table class="field-table">
+      <thead><tr><th>Campo</th><th>Tabela</th><th>Tipo</th><th>Descrição</th></tr></thead>
+      <tbody>
+        <tr><td class="fname">proId <span class="fbadge b-key">CHAVE</span></td><td class="ftype">produto</td><td class="ftype">Inteiro</td><td class="fdesc">ID do produto. No INSERT: se omitido usa IDENTITY. Se informado, verifica colisão. No UPDATE: obrigatório para localizar o registro.</td></tr>
+        <tr><td class="fname">proDescricao <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto</td><td class="ftype">Texto (120)</td><td class="fdesc">Descrição completa do produto</td></tr>
+        <tr><td class="fname">proCodCst2 <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto (10)</td><td class="fdesc">Código de Situação Tributária — ex: 00, 60, 102, 500</td></tr>
+        <tr><td class="fname">proCodigo <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto (30)</td><td class="fdesc">Código interno do produto</td></tr>
+        <tr><td class="fname">proUn <span class="fbadge b-req">OBRIGATÓRIO</span> <span class="fbadge b-lkp">LOOKUP</span></td><td class="ftype">produto</td><td class="ftype">Texto (6)</td><td class="fdesc">Unidade — consultada em produtoUn (campo unpUn). Preenche proUnComercialId, proUnTrib e proUnTribId em produto e produto_empresa.</td></tr>
+        <tr><td class="fname">ncmCodigoNCM <span class="fbadge b-req">OBRIGATÓRIO</span> <span class="fbadge b-lkp">LOOKUP</span></td><td class="ftype">proNCM</td><td class="ftype">Texto (20)</td><td class="fdesc">Código NCM — deve existir na tabela proNCM. Preenche proNcmId.</td></tr>
+        <tr><td class="fname">proAplicacao <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Texto</td><td class="fdesc">Campo de aplicação do produto</td></tr>
+        <tr><td class="fname">proBalanca <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Inteiro (0/1)</td><td class="fdesc">Produto de balança — 0=Não, 1=Sim</td></tr>
+        <tr><td class="fname">proMedVenda <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Medida de venda</td></tr>
+        <tr><td class="fname">proMultiplo <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Múltiplo de venda</td></tr>
+        <tr><td class="fname">proPeso <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Peso do produto</td></tr>
+        <tr><td class="fname">proQtdComEntrada <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Quantidade com entrada</td></tr>
+        <tr><td class="fname">proTipo <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto</td><td class="ftype">Texto (1)</td><td class="fdesc">Tipo do produto — P=Produto, S=Serviço</td></tr>
+        <tr><td class="fname">proAtacado <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Preço de atacado</td></tr>
+        <tr><td class="fname">proCodCSOSN <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto (10)</td><td class="fdesc">Código de Situação da Operação no Simples Nacional</td></tr>
+        <tr><td class="fname">proCusto <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Preço de custo</td></tr>
+        <tr><td class="fname">proDesativaProd <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Inteiro (-1/0)</td><td class="fdesc">Produto desativado — -1=Sim, 0=Não</td></tr>
+        <tr><td class="fname">proEstoqueAtual <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Estoque atual</td></tr>
+        <tr><td class="fname">proEstoqueMin <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Estoque mínimo</td></tr>
+        <tr><td class="fname">proLocalizador <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto</td><td class="fdesc">Localizador de prateleira</td></tr>
+        <tr><td class="fname">proPrateleira <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto</td><td class="fdesc">Prateleira do produto</td></tr>
+        <tr><td class="fname">proVenda <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Preço de venda</td></tr>
+        <tr><td class="fname">pclDescricao <span class="fbadge b-opt">OPCIONAL</span> <span class="fbadge b-auto">AUTO-CRIA</span></td><td class="ftype">produtoClasse</td><td class="ftype">Texto</td><td class="fdesc">Classe do produto — criada automaticamente em produtoClasse se não existir. Preenche proClasseId.</td></tr>
+        <tr><td class="fname">cesCodigo <span class="fbadge b-opt">OPCIONAL</span> <span class="fbadge b-lkp">LOOKUP</span></td><td class="ftype">proCEST</td><td class="ftype">Texto</td><td class="fdesc">Código CEST — deve existir em proCEST. Preenche proCestId.</td></tr>
+        <tr><td class="fname">fabNome <span class="fbadge b-opt">OPCIONAL</span> <span class="fbadge b-auto">AUTO-CRIA</span></td><td class="ftype">fabricante</td><td class="ftype">Texto</td><td class="fdesc">Nome do fabricante — criado automaticamente em fabricante se não existir. Preenche proFab.</td></tr>
+        <tr><td class="fname">gdpNome <span class="fbadge b-opt">OPCIONAL</span> <span class="fbadge b-auto">AUTO-CRIA</span></td><td class="ftype">grupoProd</td><td class="ftype">Texto</td><td class="fdesc">Nome do grupo — criado automaticamente em grupoProd se não existir. Preenche proGrupo.</td></tr>
+        <tr><td class="fname">sgpNome <span class="fbadge b-opt">OPCIONAL</span> <span class="fbadge b-auto">AUTO-CRIA</span></td><td class="ftype">subGrupoProd</td><td class="ftype">Texto</td><td class="fdesc">Nome do subgrupo — criado automaticamente em subGrupoProd vinculando ao grupo (sgpIdGdp = gdpId). Preenche proSubGrupo.</td></tr>
+        <tr><td class="fname">cdbCodigo <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">codBarras</td><td class="ftype">Texto</td><td class="fdesc">Código EAN / Código de Barras — inserido em codBarras.cdbCodigo vinculado ao proId via cdbIdProd. No UPDATE, insere apenas se não existir.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="callout callout-warn">
+  <div class="callout-icon">⚠️</div>
+  <div class="callout-body"><strong>Regras do proId — INSERT:</strong><br>
+  • <strong>proId vazio / em branco:</strong> segue a <strong>numeração do próprio banco</strong> (coluna IDENTITY). O ID gerado é capturado via <code style="font-family:var(--mono);font-size:11px;">SCOPE_IDENTITY()</code> e vinculado a produto_empresa e codBarras. Ideal para migração — não é preciso inventar IDs.<br>
+  • <strong>proId informado:</strong> insere o ID explicitamente (SET IDENTITY_INSERT) e verifica colisão.<br>
+  • <strong>Ao final de qualquer INSERT:</strong> o seed do IDENTITY é reconfigurado para <code style="font-family:var(--mono);font-size:11px;">MAX(proId) + 1</code> automaticamente.
+  </div>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-icon">🆕</div>
+  <div class="callout-body"><strong>Unidade não encontrada em produtoUn — cadastro automático:</strong> se a unidade (proUn) não existir, o sistema a <strong>cadastra automaticamente</strong> em <code style="font-family:var(--mono);font-size:11px;">produtoUn</code> (unpUn = código, unpDescricao = código, unpDesativar = 0) e já vincula proUnComercialId, proUnTrib e proUnTribId ao produto. Ao final, exibe a lista das unidades criadas automaticamente para conferência.</div>
+</div>
+
+<div class="callout callout-info">
+  <div class="callout-icon">✂️</div>
+  <div class="callout-body"><strong>Corte automático de tamanho (evita erro "dados seriam truncados"):</strong> textos maiores que a coluna do banco são cortados automaticamente no limite — <code style="font-family:var(--mono);font-size:11px;">proDescricao</code> (100), <code style="font-family:var(--mono);font-size:11px;">proLocalizador</code> (20), <code style="font-family:var(--mono);font-size:11px;">proPrateleira</code> (20), <code style="font-family:var(--mono);font-size:11px;">proCodigo</code> (50), <code style="font-family:var(--mono);font-size:11px;">proUn</code> (10), <code style="font-family:var(--mono);font-size:11px;">proCodCSOSN</code> (3), <code style="font-family:var(--mono);font-size:11px;">proCodCst2</code> (2), <code style="font-family:var(--mono);font-size:11px;">proTipo</code> (1).</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── CLIENTES -->
+<div class="section-anchor" id="clientes"></div>
+<div class="section-label">09 — Módulo Clientes</div>
+<h2 class="section-title">👥 Importação de Clientes / Fornecedores</h2>
+<p class="section-desc">Importa dados nas tabelas <code style="font-family:var(--mono);font-size:13px;">cliente</code> e <code style="font-family:var(--mono);font-size:13px;">cliente_empresa</code>. Suporta INSERT e UPDATE.</p>
+
+<div class="module">
+  <div class="module-header">
+    <div class="module-icon">📋</div>
+    <div class="module-name">Todos os Campos Mapeáveis</div>
+    <span class="module-tag tag-both">INSERT + UPDATE</span>
+  </div>
+  <div class="module-body">
+    <table class="field-table">
+      <thead><tr><th>Campo</th><th>Tabela</th><th>Tipo</th><th>Descrição</th></tr></thead>
+      <tbody>
+        <tr><td class="fname">cliId <span class="fbadge b-key">CHAVE</span></td><td class="ftype">cliente</td><td class="ftype">Inteiro</td><td class="fdesc">ID do cliente. Mínimo aceito: 11 (1-10 são reservados pelo MaxManager). No UPDATE: obrigatório ou substituído por CPF/CNPJ.</td></tr>
+        <tr><td class="fname">cliCpfCgc <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (20)</td><td class="fdesc">CPF (11 dígitos) ou CNPJ (14 dígitos) sem pontuação</td></tr>
+        <tr><td class="fname">cliNome <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (50)</td><td class="fdesc">Razão social ou nome completo</td></tr>
+        <tr><td class="fname">cliFantasia <span class="fbadge b-auto">AUTO/OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Texto (50)</td><td class="fdesc">Nome fantasia. Se vazio: CPF fica em branco automático; CNPJ pergunta se repete o Nome (com aviso sobre documentos fiscais).</td></tr>
+        <tr><td class="fname">cliRgInsc <span class="fbadge b-auto">AUTO/OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Texto (20)</td><td class="fdesc">RG ou Inscrição Estadual. Se vazio: CPF fica em branco automático; CNPJ pergunta se preenche com ISENTO.</td></tr>
+        <tr><td class="fname">cliFatEnd <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (120)</td><td class="fdesc">Logradouro do endereço de faturamento</td></tr>
+        <tr><td class="fname">cliFatEndNumero <span class="fbadge b-auto">AUTO/OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Texto (20)</td><td class="fdesc">Número do endereço. Se vazio: pergunta se preenche com S/N ou deixa vazio.</td></tr>
+        <tr><td class="fname">cliFatBairro <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (70)</td><td class="fdesc">Bairro</td></tr>
+        <tr><td class="fname">cliFatCidade <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (30)</td><td class="fdesc">Cidade</td></tr>
+        <tr><td class="fname">cliFatCidCodIBGE <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (20)</td><td class="fdesc">Código IBGE da cidade — 7 dígitos</td></tr>
+        <tr><td class="fname">cliFatUf <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (2)</td><td class="fdesc">Sigla do estado — ex: TO, SP, GO</td></tr>
+        <tr><td class="fname">cliFatCep <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">cliente</td><td class="ftype">Texto (9)</td><td class="fdesc">CEP — 8 dígitos sem hífen</td></tr>
+        <tr><td class="fname">DataInclusao <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Data/Hora</td><td class="fdesc">Data de inclusão do cadastro — gravada em cliente_empresa.cliDatCad</td></tr>
+        <tr><td class="fname">cliDesativa <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Inteiro (0/1)</td><td class="fdesc">Cadastro desativado — 0=Ativo, 1=Inativo</td></tr>
+        <tr><td class="fname">cliEmail <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Texto</td><td class="fdesc">E-mail de contato</td></tr>
+        <tr><td class="fname">cliFone <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Texto</td><td class="fdesc">Telefone de contato</td></tr>
+        <tr><td class="fname">cliTipoCad <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">cliente</td><td class="ftype">Texto</td><td class="fdesc">Tipo de cadastro</td></tr>
+        <tr><td class="fname">cliTipo <span class="fbadge b-opt">OPCIONAL</span> <span class="fbadge b-auto">AUTO</span></td><td class="ftype">cliente</td><td class="ftype">Inteiro (0/1)</td><td class="fdesc">Tipo do cliente — <strong>0 = Pessoa Física</strong> &nbsp;|&nbsp; <strong>1 = Pessoa Jurídica</strong>. Se <strong>não for mapeado</strong> (ou vier vazio), o sistema deriva automaticamente do CPF/CNPJ: <strong>11 dígitos → 0</strong>, <strong>14 dígitos → 1</strong>. CPF/CNPJ vazio → deixa vazio.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-icon">🧩</div>
+  <div class="callout-body">
+    <strong>Campos AUTO/OPCIONAL — tratamento interativo ao iniciar:</strong> ao clicar em INSERIR, se estes campos estiverem vazios o sistema pergunta como proceder (e preenche conforme a resposta), em vez de bloquear a importação:<br><br>
+    • <strong>Nome Fantasia:</strong> se o documento for <strong>CPF</strong> → fica em branco automático; se for <strong>CNPJ</strong> → pergunta se deseja repetir o Nome. <em>Aviso:</em> repetir o Nome no Fantasia (ou quando o cliente já possui Fantasia) pode gerar problemas na emissão de documentos fiscais — conferir após a importação.<br>
+    • <strong>RG / Inscrição:</strong> se <strong>CPF</strong> → branco automático; se <strong>CNPJ</strong> → pergunta se preenche com ISENTO.<br>
+    • <strong>Número do endereço:</strong> pergunta se preenche com S/N ou deixa vazio.<br><br>
+    Os demais campos (CPF/CNPJ, Nome, Endereço, Bairro, Cidade, IBGE, UF, CEP) permanecem <strong>obrigatórios</strong>.
+  </div>
+</div>
+
+<div class="callout callout-danger">
+  <div class="callout-icon">🚫</div>
+  <div class="callout-body"><strong>IDs reservados pelo sistema:</strong> cliId de 1 a 10 são reservados pelo MaxManager. Qualquer linha com esses valores é <strong>rejeitada antes de iniciar</strong> a importação, sem contato com o banco.</div>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-icon">💡</div>
+  <div class="callout-body">
+    <strong>INSERT — Lógica do cliId:</strong><br>
+    • Com cliId no arquivo → verifica colisões. IDs já existentes são <strong>pulados automaticamente</strong> (não causam erro, contabilizados como "pulados").<br>
+    • Sem cliId → IDENTITY automático a partir de 11.<br><br>
+    <strong>UPDATE — Localização do registro:</strong><br>
+    • Com cliId mapeado → atualiza diretamente pela chave primária.<br>
+    • Sem cliId → sistema pergunta antes de iniciar se deseja usar CPF/CNPJ como chave de localização.
+  </div>
+</div>
+
+<div class="module" style="margin-top:20px;">
+  <div class="module-header">
+    <div class="module-icon">🔄</div>
+    <div class="module-name">Inserção automática em cliente_empresa (INSERT)</div>
+  </div>
+  <div class="module-body">
+    <p>A cada cliente inserido em <code style="font-family:var(--mono);font-size:12px;">cliente</code>, um registro é criado automaticamente em <code style="font-family:var(--mono);font-size:12px;">cliente_empresa</code> com os valores abaixo:</p>
+    <table class="field-table">
+      <thead><tr><th>Campo</th><th>Valor Gravado</th></tr></thead>
+      <tbody>
+        <tr><td class="fname">empId</td><td class="fdesc">Obtido de config.cofId (ID da empresa ativa)</td></tr>
+        <tr><td class="fname">cliId</td><td class="fdesc">Mesmo cliId inserido em cliente</td></tr>
+        <tr><td class="fname">cliCalculaIcmsSubst</td><td class="fdesc">0 (padrão)</td></tr>
+        <tr><td class="fname">cliDescontoAutoAplicar</td><td class="fdesc">0 (padrão)</td></tr>
+        <tr><td class="fname">cliDescontoAutoAliq</td><td class="fdesc">0.00000</td></tr>
+        <tr><td class="fname">cliMaxdataRateioCredito_Aliq_01/02/03</td><td class="fdesc">0.00000</td></tr>
+        <tr><td class="fname">cliDatCad</td><td class="fdesc">Valor de DataInclusao do arquivo, ou NULL se não informado</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── FINANCEIRO -->
+<div class="section-anchor" id="financeiro"></div>
+<div class="section-label">10 — Módulo Financeiro</div>
+<h2 class="section-title">💰 Importação Financeiro (vendaPgto)</h2>
+<p class="section-desc">Importa lançamentos financeiros na tabela <code style="font-family:var(--mono);font-size:13px;">vendaPgto</code>. Somente INSERT. Localiza automaticamente o cliente pelo CPF/CNPJ.</p>
+
+<div class="module">
+  <div class="module-header">
+    <div class="module-icon">📋</div>
+    <div class="module-name">Todos os Campos Mapeáveis</div>
+    <span class="module-tag tag-insert">Somente INSERT</span>
+  </div>
+  <div class="module-body">
+    <table class="field-table">
+      <thead><tr><th>Campo</th><th>Tabela</th><th>Tipo</th><th>Descrição</th></tr></thead>
+      <tbody>
+        <tr><td class="fname">cliCpfCgc <span class="fbadge b-req">OBRIGATÓRIO</span> <span class="fbadge b-lkp">LOOKUP</span></td><td class="ftype">cliente</td><td class="ftype">Texto (20)</td><td class="fdesc">CPF/CNPJ — usado para localizar o cliId. Linha pulada e registrada se não encontrado.</td></tr>
+        <tr><td class="fname">pgtCliNome <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto (50)</td><td class="fdesc">Nome do cliente no lançamento</td></tr>
+        <tr><td class="fname">pgtTipoVista <span class="fbadge b-req">OBRIGATÓRIO*</span></td><td class="ftype">vendaPgto</td><td class="ftype">Inteiro</td><td class="fdesc">*Ao menos um entre pgtTipoVista e pgtTipoPrazo deve ter valor por linha. NULL individual é aceito.</td></tr>
+        <tr><td class="fname">pgtTipoPrazo <span class="fbadge b-req">OBRIGATÓRIO*</span></td><td class="ftype">vendaPgto</td><td class="ftype">Inteiro</td><td class="fdesc">*Ao menos um entre pgtTipoVista e pgtTipoPrazo deve ter valor por linha. NULL individual é aceito.</td></tr>
+        <tr><td class="fname">pgtValor <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">vendaPgto</td><td class="ftype">Decimal(18,5)</td><td class="fdesc">Valor do lançamento — aceita vírgula ou ponto como separador decimal</td></tr>
+        <tr><td class="fname">pgtData <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">vendaPgto</td><td class="ftype">Data/Hora</td><td class="fdesc">Data do lançamento — formatos aceitos: AAAA-MM-DD, DD/MM/AAAA e variantes com hora</td></tr>
+        <tr><td class="fname">pgtVecmto <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">vendaPgto</td><td class="ftype">Data/Hora</td><td class="fdesc">Data de vencimento</td></tr>
+        <tr><td class="fname">pgtTipoConta <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto (1)</td><td class="fdesc">R = Receber &nbsp;|&nbsp; P = Pagar</td></tr>
+        <tr><td class="fname">pgtPago <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto (1)</td><td class="fdesc">C = Quitado &nbsp;|&nbsp; N = Aberto &nbsp;|&nbsp; S = Parcial</td></tr>
+        <tr><td class="fname">pgtNumDoc <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto</td><td class="fdesc">Número do documento</td></tr>
+        <tr><td class="fname">pgtObs <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto</td><td class="fdesc">Observação do lançamento</td></tr>
+        <tr><td class="fname">pgtDataQuitou <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Data/Hora</td><td class="fdesc">Data de quitação — preenchida quando pgtPago = C</td></tr>
+        <tr><td class="fname">pgtNossoNumero <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto</td><td class="fdesc">Nosso número (boleto)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-icon">💡</div>
+  <div class="callout-body"><strong>CPF/CNPJ não encontrado:</strong> a linha é pulada e registrada internamente. Ao final da importação, uma janela lista todos os registros não inseridos com a opção de <strong>salvar em arquivo .txt</strong> para correção e reimportação posterior.</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── MIGRAÇÃO -->
+<div class="section-anchor" id="migracao"></div>
+<div class="section-label">11 — Módulo Migração</div>
+<h2 class="section-title">🔄 Migração entre Bancos MaxData (Max → Max)</h2>
+<p class="section-desc">Copia dados diretamente de um banco MaxData para outro da <strong>mesma instância SQL</strong>, sem precisar de arquivo. Acessível pelo botão "Migração entre Bancos MaxData" no menu principal.</p>
+
+<div class="flow" style="margin-bottom:24px;">
+  <div class="flow-box accent">① Banco ORIGEM</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box accent">② Banco DESTINO</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box accent">③ O que migrar</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box green">Totais consolidados</div>
+</div>
+
+<div class="callout callout-info">
+  <div class="callout-icon">🧭</div>
+  <div class="callout-body"><strong>Ordem fixa de migração:</strong> 👥 Clientes → 🔐 Permissões → 📦 Produtos → 💰 Financeiro. Clientes vão primeiro porque as demais entidades dependem deles (permissões via FK, financeiro via CPF/CNPJ).</div>
+</div>
+
+<div class="module">
+  <div class="module-header">
+    <div class="module-icon">👥</div>
+    <div class="module-name">Clientes — modo "banco zero" (APAGA o destino)</div>
+    <span class="module-tag tag-insert">Cópia idêntica</span>
+  </div>
+  <div class="module-body">
+    <ul class="rules">
+      <li><span class="rule-icon">⚠️</span><div><strong>Ciência do usuário:</strong> antes de iniciar, um diálogo avisa que as tabelas <code style="font-family:var(--mono);font-size:11px;">cliente</code> e <code style="font-family:var(--mono);font-size:11px;">cliente_empresa</code> do DESTINO serão <strong>APAGADAS</strong> e recomenda usar um <strong>banco ZERADO</strong>. Só continua com a confirmação.</div></li>
+      <li><span class="rule-icon">🧹</span><div><strong>Limpeza segura:</strong> DELETE em transação — se o destino tiver dados relacionados (vendas, caixa, etc., há ~150 tabelas com FK para cliente), a limpeza é <strong>bloqueada e nada é apagado</strong>.</div></li>
+      <li><span class="rule-icon">🔢</span><div><strong>Reset dos contadores:</strong> <code style="font-family:var(--mono);font-size:11px;">DBCC CHECKIDENT ('cliente', RESEED, 0)</code> e idem em cliente_empresa — a numeração volta a começar do 1.</div></li>
+      <li><span class="rule-icon">📋</span><div><strong>Cópia idêntica:</strong> TODOS os cliId (inclusive 1–10) são mantidos, <strong>sem</strong> validação de obrigatórios e <strong>sem</strong> a regra de IDs reservados. Campos: cliCpfCgc, DataInclusao, cliDesativa, cliEmail, cliFantasia, cliFatBairro, cliFatCep, cliFatCidade, cliFatCidCodIBGE, cliFatEnd, cliFatEndNumero, cliFatUf, cliFone, cliId, cliNome, cliRgInsc, cliTipoCad, cliTipo. O vínculo cliente_empresa é recriado.</div></li>
+      <li><span class="rule-icon">👯</span><div><strong>Duplicados (cliNome + cliCpfCgc iguais):</strong> o sistema informa quantos se repetem e pergunta se deseja <strong>desativar os repetidos</strong> — mantém ATIVO apenas o mais novo (maior cliId) e coloca <code style="font-family:var(--mono);font-size:11px;">cliDesativa = -1</code> nos demais — ou manter todos como na origem.</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="module" style="margin-top:16px;">
+  <div class="module-header">
+    <div class="module-icon">🔐</div>
+    <div class="module-name">Permissões de Usuário (UsuarioPermissao)</div>
+  </div>
+  <div class="module-body">
+    <ul class="rules">
+      <li><span class="rule-icon">📄</span><div>Copia <code style="font-family:var(--mono);font-size:11px;">uspUsuId</code> + <code style="font-family:var(--mono);font-size:11px;">uspObjeto</code>; o uspId é gerado pelo destino.</div></li>
+      <li><span class="rule-icon">⏭️</span><div><strong>Pula</strong> permissões que já existem no destino (mesmo usuário + objeto).</div></li>
+      <li><span class="rule-icon">🛡️</span><div><strong>Ignora sem erro</strong> permissões cujo usuário (cliId) não existe no destino (FK uspUsuId → cliente.cliId) — por isso Clientes migram antes.</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="module" style="margin-top:16px;">
+  <div class="module-header">
+    <div class="module-icon">📦</div>
+    <div class="module-name">Produtos — com tratamento de estoque e acerto automático</div>
+  </div>
+  <div class="module-body">
+    <ul class="rules">
+      <li><span class="rule-icon">🔑</span><div><strong>Mantém o proId</strong> da origem; produtos já existentes no destino não são duplicados (IF NOT EXISTS).</div></li>
+      <li><span class="rule-icon">⚙️</span><div>Aplica as mesmas regras do importador: <strong>unidade cadastrada automaticamente</strong> em produtoUn, auto-criação de fabricante/grupo/subgrupo/classe, corte de textos longos, código de barras.</div></li>
+      <li><span class="rule-icon">❓</span><div><strong>Pergunta ao iniciar: "Deseja migrar o ESTOQUE ATUAL?"</strong><br>• <strong>Não</strong> → todos os produtos entram com proEstoqueAtual = 0 no destino.<br>• <strong>Sim</strong> → se houver produtos com estoque <strong>negativo</strong> na origem, pergunta se deseja iniciá-los com ZERO (Sim = zera só os negativos | Não = mantém os valores da origem).</div></li>
+      <li><span class="rule-icon">📦</span><div><strong>Acerto de estoque pós-migração:</strong> ao concluir, se houver produtos com estoque &gt; 0 no destino, é gerado automaticamente um <strong>ACERTO DE ESTOQUE PENDENTE</strong> (status 'A', obs "MAXDATA SISTEMA - MIGRACAO", usuário admin cliUsuLoginId = 2) e o sistema avisa: <strong>rode o acerto no Manager</strong> para efetivar o estoque.</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="module" style="margin-top:16px;">
+  <div class="module-header">
+    <div class="module-icon">💰</div>
+    <div class="module-name">Financeiro (vendaPgto)</div>
+  </div>
+  <div class="module-body">
+    <ul class="rules">
+      <li><span class="rule-icon">🔎</span><div>Localiza o cliente no destino pelo <strong>CPF/CNPJ</strong>; não encontrado → linha pulada (contada como "não encontrados").</div></li>
+      <li><span class="rule-icon">🆔</span><div>O <code style="font-family:var(--mono);font-size:11px;">pgtId</code> é <strong>gerado novo</strong> no destino (não mantém o da origem).</div></li>
+      <li><span class="rule-icon">🔁</span><div><strong>Idempotente:</strong> antes de inserir, verifica se já existe um lançamento igual no destino (empId + pgtClienteId + pgtValor + pgtData + pgtVecmto + pgtNumDoc + pgtTipoConta) e pula se existir. Rodar a migração 2× <strong>não duplica</strong> os lançamentos.</div></li>
+    </ul>
+  </div>
+</div>
+
+<div class="callout callout-tip" style="margin-top:20px;">
+  <div class="callout-icon">🧬</div>
+  <div class="callout-body"><strong>Resiliente a schemas diferentes:</strong> os SELECTs na origem são montados <strong>dinamicamente</strong>, detectando quais colunas existem no banco de origem. Colunas ausentes viram NULL em vez de quebrar — funciona entre versões/schemas diferentes do MaxData.</div>
+</div>
+
+<div class="callout callout-info">
+  <div class="callout-icon">📊</div>
+  <div class="callout-body"><strong>Totais consolidados + relatório:</strong> ao final, a tela mostra os totais de todas as opções migradas juntos (inseridos / não inseridos / erros) e um relatório próprio <code style="font-family:var(--mono);font-size:11px;">RELATORIO_MIGRACAO_AAAAMMDD_HHMM.txt</code> é <strong>sempre</strong> salvo na pasta de logs — inclusive quando ocorre erro.</div>
+</div>
+
+<div class="callout callout-tip">
+  <div class="callout-icon">🧾</div>
+  <div class="callout-body"><strong>Conferência ORIGEM × DESTINO (reconciliação):</strong> após migrar, o sistema compara automaticamente origem e destino — contagens de <code style="font-family:var(--mono);font-size:11px;">cliente</code>, <code style="font-family:var(--mono);font-size:11px;">UsuarioPermissao</code>, <code style="font-family:var(--mono);font-size:11px;">produto</code>, <code style="font-family:var(--mono);font-size:11px;">codBarras</code> e <code style="font-family:var(--mono);font-size:11px;">vendaPgto</code>, além das somas de <strong>estoque</strong> (proEstoqueAtual) e de <strong>valores do financeiro</strong> (pgtValor). Cada linha sai com status <strong>✅ confere</strong>, <strong>ℹ️ diferença esperada</strong> (ex.: estoque zerado por opção) ou <strong>⚠️ divergente</strong> com a possível causa — na tela, no log e no relatório.</div>
+</div>
+
+<div class="callout callout-danger">
+  <div class="callout-icon">🚫</div>
+  <div class="callout-body"><strong>Antes de migrar:</strong> faça <strong>BACKUP do banco de destino</strong>. Origem e destino precisam estar na <strong>mesma instância SQL</strong> (a conectada no login). Para Clientes, use preferencialmente um <strong>banco de destino zerado</strong>.</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── ARQUIVOS -->
+<div class="section-anchor" id="arquivos"></div>
+<div class="section-label">12 — Formatos de Arquivo</div>
+<h2 class="section-title">Formatos de Arquivo Aceitos</h2>
+<p class="section-desc">O sistema aceita arquivos .txt ou .csv com detecção automática do separador pela primeira linha do arquivo.</p>
+
+<ul class="rules">
+  <li><span class="rule-icon">📄</span><div><strong>Extensões:</strong> .txt ou .csv</div></li>
+  <li><span class="rule-icon">📐</span><div><strong>Separadores (detectados automaticamente):</strong> Tabulação (TAB) — prioridade; Ponto-e-vírgula (;); Vírgula (,)</div></li>
+  <li><span class="rule-icon">🔤</span><div><strong>Encoding:</strong> Latin-1 (ISO-8859-1) — padrão para arquivos exportados do Excel no Windows</div></li>
+  <li><span class="rule-icon">1️⃣</span><div><strong>Primeira linha:</strong> deve conter o cabeçalho com os nomes das colunas. As demais linhas são dados.</div></li>
+  <li><span class="rule-icon">🔢</span><div><strong>Decimais:</strong> aceitos com vírgula (1.234,56) ou ponto (1234.56) como separador. O sistema normaliza automaticamente antes de gravar.</div></li>
+  <li><span class="rule-icon">📅</span><div><strong>Datas aceitas:</strong> AAAA-MM-DD, DD/MM/AAAA, AAAA-MM-DD HH:MM:SS, DD/MM/AAAA HH:MM:SS, AAAA-MM-DD HH:MM:SS.fff</div></li>
+</ul>
+
+<div class="callout callout-info">
+  <div class="callout-icon">ℹ️</div>
+  <div class="callout-body"><strong>Valores nulos:</strong> células vazias e os textos <code style="font-family:var(--mono);font-size:11px;">NULL</code>, <code style="font-family:var(--mono);font-size:11px;">NONE</code> e <code style="font-family:var(--mono);font-size:11px;">NAN</code> (maiúsculos ou minúsculos) são todos interpretados como NULL e não causam erro em campos opcionais.</div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── LOGS -->
+<div class="section-anchor" id="logs"></div>
+<div class="section-label">13 — Logs e Relatórios</div>
+<h2 class="section-title">Logs e Relatórios de Importação</h2>
+<p class="section-desc">Cada importação gera dois arquivos na pasta configurada em <code style="font-family:var(--mono);font-size:13px;">max_importa.ini</code>. Os loggers são independentes por janela — múltiplas sessões simultâneas não interferem entre si.</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-icon">📋</div>
+    <div class="card-title">Arquivo de Log (.log)</div>
+    <div class="card-body">Registro em tempo real de cada operação. Atualizado linha a linha durante a importação.<br><br>
+      <code style="font-family:var(--mono);font-size:11px;">LOG_MAX_IMPORTA_AAAAMMDD_HHMM.log</code><br>
+      <code style="font-family:var(--mono);font-size:11px;">LOG_MAX_IMPORTA_CLI_AAAAMMDD_HHMM.log</code><br>
+      <code style="font-family:var(--mono);font-size:11px;">LOG_MAX_IMPORTA_FIN_AAAAMMDD_HHMM.log</code>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-icon">📊</div>
+    <div class="card-title">Relatório Final (.txt)</div>
+    <div class="card-body">Resumo completo com todos os eventos, contadores de sucesso, erros e pulados. Gerado ao término da importação (e também quando a validação falha).<br><br>
+      <code style="font-family:var(--mono);font-size:11px;">RELATORIO_MAX_IMPORTA_AAAAMMDD_HHMM.txt</code><br>
+      <code style="font-family:var(--mono);font-size:11px;">RELATORIO_MAX_IMPORTA_CLI_...txt</code><br>
+      <code style="font-family:var(--mono);font-size:11px;">RELATORIO_MAX_IMPORTA_FIN_...txt</code>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-icon">❌</div>
+    <div class="card-title">Arquivo de Erros (.txt)</div>
+    <div class="card-body">Gerado quando há erros/itens inválidos, listando os NOMES dos itens/clientes que falharam (ou os campos vazios, na falha de validação).<br><br>
+      <code style="font-family:var(--mono);font-size:11px;">ERROS_PRODUTOS_...txt</code><br>
+      <code style="font-family:var(--mono);font-size:11px;">ERROS_CLIENTES_VALIDACAO_...txt</code><br>
+      <code style="font-family:var(--mono);font-size:11px;">ERROS_FINANCEIRO_VALIDACAO_...txt</code>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-tip" style="margin-top:20px;">
+  <div class="callout-icon">📦</div>
+  <div class="callout-body"><strong>Após a importação (evita duplicidade):</strong> ao concluir (com ou sem erros), o programa <strong>renomeia o arquivo importado</strong> com o status e data/hora — ex.: <code style="font-family:var(--mono);font-size:11px;">clientes_IMPORTADO_OK_AAAAMMDD_HHMMSS.txt</code> ou <code style="font-family:var(--mono);font-size:11px;">produtos_IMPORTADO_COM_ERROS_...txt</code> — e <strong>limpa a seleção na tela</strong>, impedindo que o mesmo arquivo seja importado duas vezes por engano. O arquivo original é preservado (apenas renomeado).</div>
+</div>
+
+<div class="code-block">
+  <div class="code-label">Exemplo de Relatório — Produtos INSERT</div>
+  <code>=== RELATÓRIO FINAL — MAX_IMPORTA ===
+
+15:24:52 | Arquivo: modele de importação_produto.txt (150 linhas, 27 colunas)
+15:25:04 | Validando campos obrigatorios em todo o arquivo...
+15:25:04 | Validacao OK — todos os campos obrigatorios preenchidos.
+15:25:04 | 🔄 Iniciando INSERT — 150 registros | empId=1
+15:25:04 | ✅ proId 1 inserido
+15:25:05 | ✅ proId 67 inserido
+15:25:08 | ✅ proId 143 inserido
+15:25:09 | ✅ proId 218 inserido
+15:25:09 | 🔧 IDENTITY reconfigurado — proximo proId sera 219.
+15:25:09 | 🎉 INSERT finalizado — ✅ 150 inseridos | ❌ 0 erros
+15:25:09 | 📄 Relatório salvo: C:\Max\MaxImporta\Log\RELATORIO_MAX_IMPORTA_20260508_1525.txt</code>
+</div>
+
+<div class="callout callout-info">
+  <div class="callout-icon">📁</div>
+  <div class="callout-body">
+    <strong>Pasta padrão:</strong> <code style="font-family:var(--mono);font-size:11px;">C:\Max\MaxImporta\Log\</code><br>
+    <strong>Alterar:</strong> menu principal → botão <strong>"⚙ Configurar pasta de logs"</strong><br>
+    <strong>Configuração salva em:</strong> <code style="font-family:var(--mono);font-size:11px;">max_importa.ini</code> na pasta do executável
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ───────────────────────────────────────── ERROS -->
+<div class="section-anchor" id="erros"></div>
+<div class="section-label">14 — Solução de Problemas</div>
+<h2 class="section-title">Erros Comuns e Soluções</h2>
+<p class="section-desc">Lista dos erros mais frequentes com orientação de resolução.</p>
+
+<div class="module">
+  <div class="module-body" style="padding:0;">
+    <table class="err-table">
+      <thead>
+        <tr><th>Erro / Situação</th><th>Causa</th><th>Solução</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="err-code">Violação de PRIMARY KEY</td>
+          <td class="fdesc">ID já existe na tabela — tentativa anterior gravou parcialmente</td>
+          <td class="err-fix">Use UPDATE para os registros já existentes, ou exclua-os antes de reimportar</td>
+        </tr>
+        <tr>
+          <td class="err-code">Nome de coluna inválido 'xxx'</td>
+          <td class="fdesc">Campo mapeado não existe na tabela de destino</td>
+          <td class="err-fix">Verifique o nome exato do campo na documentação e corrija o mapeamento</td>
+        </tr>
+        <tr>
+          <td class="err-code">Dados de cadeia seriam truncados</td>
+          <td class="fdesc">Campo de texto excede o limite da coluna no banco</td>
+          <td class="err-fix">Resolvido: o sistema corta automaticamente no limite da coluna, tanto em clientes quanto em produtos (proDescricao 100, proLocalizador 20, etc.)</td>
+        </tr>
+        <tr>
+          <td class="err-code">No module named 'PIL'</td>
+          <td class="fdesc">.exe antigo, gerado sem o Pillow empacotado</td>
+          <td class="err-fix">Resolvido: o BUILD.bat instala o pillow e o .spec inclui PIL nos hiddenimports. Basta regerar o .exe.</td>
+        </tr>
+        <tr>
+          <td class="err-code">Python nao encontrado (BUILD.bat)</td>
+          <td class="fdesc">Python não instalado na máquina que gera o .exe</td>
+          <td class="err-fix">Resolvido: o BUILD.bat instala o Python automaticamente (winget ou download oficial) e se reabre. Se falhar, instale de python.org.</td>
+        </tr>
+        <tr>
+          <td class="err-code">0 inseridos / "proId vazio, ignorando" (produtos)</td>
+          <td class="fdesc">Arquivo de migração sem a coluna proId preenchida</td>
+          <td class="err-fix">Resolvido: proId vazio agora segue a numeração do próprio banco (IDENTITY). Não é preciso preencher proId.</td>
+        </tr>
+        <tr>
+          <td class="err-code">OUTPUT não compatível com gatilhos</td>
+          <td class="fdesc">Tabela possui triggers — cláusula OUTPUT bloqueada</td>
+          <td class="err-fix">Resolvido na versão atual com uso de @@IDENTITY + SET NOCOUNT OFF</td>
+        </tr>
+        <tr>
+          <td class="err-code">Unidade não encontrada em produtoUn</td>
+          <td class="fdesc">Sigla de unidade não cadastrada no MaxManager</td>
+          <td class="err-fix">Resolvido: a unidade é cadastrada automaticamente em produtoUn e vinculada ao produto. Ao final, a lista das criadas é exibida para conferência.</td>
+        </tr>
+        <tr>
+          <td class="err-code">Campos obrigatorios em branco (clientes)</td>
+          <td class="fdesc">Linhas com CEP, Bairro, Cidade, Endereço ou UF vazios</td>
+          <td class="err-fix">A mensagem lista o nome amigável de cada campo, a qtde e as linhas, e gera um arquivo ERROS_... Fantasia/RG/Número são tratados de forma interativa e não bloqueiam.</td>
+        </tr>
+        <tr>
+          <td class="err-code">CPF/CNPJ não encontrado (financeiro)</td>
+          <td class="fdesc">Cliente não cadastrado na tabela cliente</td>
+          <td class="err-fix">Importe os clientes primeiro. Use o arquivo exportado ao final para identificar e corrigir</td>
+        </tr>
+        <tr>
+          <td class="err-code">IDs menores que 11 rejeitados (clientes)</td>
+          <td class="fdesc">Numeração 1-10 reservada pelo sistema MaxManager</td>
+          <td class="err-fix">Corrija o arquivo de importação removendo ou renumerando registros com cliId &lt; 11</td>
+        </tr>
+        <tr>
+          <td class="err-code">Combobox mostra apenas [ ignorar ]</td>
+          <td class="fdesc">Arquivo não foi carregado ou leitura falhou</td>
+          <td class="err-fix">Selecione o arquivo novamente. Verifique encoding (deve ser Latin-1) e se o separador é TAB, ; ou ,</td>
+        </tr>
+        <tr>
+          <td class="err-code">Logs salvos na pasta errada</td>
+          <td class="fdesc">max_importa.ini aponta para pasta desatualizada ou inexistente</td>
+          <td class="err-fix">Menu → "⚙ Configurar pasta de logs" → altere e salve. A pasta é criada automaticamente.</td>
+        </tr>
+        <tr>
+          <td class="err-code">PermissionError ao gerar .exe</td>
+          <td class="fdesc">.exe anterior aberto durante o build</td>
+          <td class="err-fix">Feche o Max_Importa.exe e rode o BUILD.bat de novo. Obs.: se abrir como Admin, o BUILD.bat já se reabre sozinho sem elevação.</td>
+        </tr>
+        <tr>
+          <td class="err-code">ODBC Driver não encontrado</td>
+          <td class="fdesc">ODBC Driver 17 for SQL Server não instalado na máquina</td>
+          <td class="err-fix">Baixe e instale de https://aka.ms/odbc17. Não requer reinicialização.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div style="margin-top:56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;">
+  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v3.1.5 — Documentação Técnica · atualizada em 01/07/2026</div>
+  <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
+  <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
+    <strong>Novidades v2.1:</strong> proId vazio segue a numeração do banco (IDENTITY) · unidade cadastrada automaticamente em produtoUn · corte automático de textos longos (fim do erro de truncamento) · campos de cliente Fantasia/RG/Número tratados de forma interativa (CPF × CNPJ) com aviso fiscal · mensagens de erro amigáveis com nome do campo, quantidade e linhas · geração de arquivo de erros e de relatório também na falha de validação · arquivo importado renomeado com status + data/hora e seleção limpa na tela · BUILD.bat instala o Python e se reabre sem elevação automaticamente · Pillow empacotado no .exe.
+  </div>
+</div>
+
+</div><!-- /content -->
+</main><!-- /main -->
+
+<script>
+const anchors = document.querySelectorAll('.section-anchor');
+const navItems = document.querySelectorAll('.nav-item');
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(e.isIntersecting){
+      const id = e.target.id;
+      navItems.forEach(n => {
+        n.classList.toggle('active', n.getAttribute('href') === '#'+id);
+      });
+    }
+  });
+},{rootMargin:'-30% 0px -60% 0px'});
+anchors.forEach(a => observer.observe(a));
+navItems.forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(item.getAttribute('href'));
+    if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+});
+</script>
+</body>
+</html>

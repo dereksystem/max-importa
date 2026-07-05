@@ -1,0 +1,84 @@
+========================================================
+ MAX_IMPORTA — Guia de Instalação e Uso
+========================================================
+
+REQUISITOS (somente para gerar o .exe)
+---------------------------------------
+- Python 3.10 ou superior  (https://www.python.org/downloads/)
+  * OBS: se o Python NÃO estiver instalado, o próprio BUILD.bat
+    instala automaticamente (via winget ou download oficial) e
+    reabre o build sozinho para aplicar o PATH.
+
+COMO GERAR O EXECUTÁVEL
+------------------------
+1. Coloque os arquivos abaixo na mesma pasta:
+     max_importa.py
+     logo_maxdata.png
+     max_x.ico            (ícone do executável)
+     max_importa.spec
+     BUILD.bat
+
+2. Dê dois cliques em  BUILD.bat
+   * Pode abrir normal. Se abrir como Administrador, o BUILD.bat
+     se reabre sozinho SEM privilégios (o PyInstaller não roda
+     elevado) — não é preciso fechar e abrir de novo.
+
+3. Aguarde (pode levar 2–5 minutos na primeira vez)
+   * Ele instala as dependências (customtkinter, pyodbc, pandas,
+     pillow, pyinstaller) automaticamente.
+
+4. O arquivo  Max_Importa.exe  será gerado na mesma pasta.
+
+PRIMEIRO USO
+------------
+Na primeira execução, o programa abrirá uma janela pedindo
+a pasta de instalação. O padrão sugerido é:
+
+    C:\Max\MaxImporta
+
+Você pode manter ou escolher outra pasta.
+Dentro dela, será criada automaticamente a subpasta:
+
+    C:\Max\MaxImporta\Log\
+
+Todos os logs e relatórios de importação serão salvos ali,
+com nomes como:
+    LOG_MAX_IMPORTA_20260501_1030.log
+    RELATORIO_MAX_IMPORTA_20260501_1030.txt
+    RELATORIO_MAX_IMPORTA_CLI_20260501_1031.txt
+    RELATORIO_MAX_IMPORTA_FIN_20260501_1032.txt
+
+Quando houver erros, também é gerado um arquivo com os NOMES
+dos itens/clientes que falharam, ex.:
+    ERROS_PRODUTOS_20260501_1030.txt
+    ERROS_CLIENTES_VALIDACAO_20260501_1031.txt
+
+APÓS A IMPORTAÇÃO (evitar duplicidade)
+--------------------------------------
+Ao concluir (com ou sem erros), o programa:
+- Renomeia o arquivo importado com o status e data/hora, ex.:
+      clientes_IMPORTADO_OK_20260501_1030.txt
+      produtos_IMPORTADO_COM_ERROS_20260501_1030.txt
+- Limpa a seleção na tela, para o mesmo arquivo não ser
+  importado duas vezes por engano.
+
+ALTERAR A PASTA DE LOGS DEPOIS
+--------------------------------
+No menu principal do programa, clique em:
+    "Configurar pasta de logs"
+
+CONFIGURAÇÃO SALVA
+------------------
+As preferências ficam no arquivo  max_importa.ini
+na mesma pasta do executável. Não apague esse arquivo
+ou o programa pedirá a pasta novamente.
+
+DRIVER ODBC (obrigatório)
+--------------------------
+O programa exige o  ODBC Driver 17 for SQL Server.
+Baixe em: https://aka.ms/odbc17
+
+SUPORTE
+-------
+Logs detalhados de cada importação ficam em:
+    [pasta_base]\Log\

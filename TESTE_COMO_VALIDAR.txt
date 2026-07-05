@@ -1,0 +1,68 @@
+========================================================
+ MAX_IMPORTA — COMO TESTAR / VALIDAR A FERRAMENTA
+========================================================
+
+Arquivo de teste incluso:  TESTE_produtos_exemplo.txt
+(5 produtos de teste, separado por TAB, cabecalhos = nomes dos
+ campos — por isso o app mapeia as colunas automaticamente.)
+
+O QUE ESTE TESTE EXERCITA
+-------------------------
+- Importacao de PRODUTOS por arquivo (INSERT).
+- proId em branco  -> o banco gera o ID (nao conflita com nada).
+- Unidade "CX"     -> nao existe? o app cadastra automaticamente
+                      em produtoUn e vincula ao produto.
+- Estoque > 0      -> ao final, o app oferece GERAR ACERTO DE
+                      ESTOQUE pendente (rode no Manager depois).
+- Codigo de barras (cdbCodigo) -> vai para a tabela codBarras.
+- NCM (ncmCodigoNCM) -> vinculado se existir no destino.
+
+IMPORTANTE (faca em um banco de TESTE)
+--------------------------------------
+Importe em um banco DESCARTAVEL / de homologacao (ex.: BD_ZERO),
+NUNCA direto na base de producao. Assim voce valida sem risco.
+
+PASSO A PASSO
+-------------
+1) Abra o Max_Importa.exe.
+2) Login: informe o servidor e conecte; escolha o banco de TESTE
+   e clique em "Confirmar Banco e Avancar".
+3) No menu, abra "Produtos".
+4) Deixe a operacao em INSERIR (INSERT).
+5) Clique em "Selecionar CSV / TXT" e escolha:
+      TESTE_produtos_exemplo.txt
+6) Confira o mapeamento:
+   - cada campo deve mostrar o indicador VERDE (mapeado);
+   - o resumo abaixo deve dizer
+     "todos os obrigatorios OK" (5/5 obrigatorios).
+   (Como os cabecalhos batem com os nomes dos campos, o
+    mapeamento vem preenchido sozinho.)
+7) Clique em "INICIAR IMPORTACAO".
+8) Acompanhe a barra + o contador "X de Y" e o log.
+
+COMO CONFERIR O RESULTADO (no banco)
+------------------------------------
+   SELECT * FROM produto        WHERE proCodigo LIKE 'TST%';
+   SELECT * FROM produto_empresa WHERE proCodigo LIKE 'TST%';
+   SELECT * FROM produtoUn      WHERE unpUn = 'CX';   -- unidade nova
+   SELECT * FROM codBarras      WHERE cdbCodigo LIKE '789000000%';
+
+Espera-se: 5 produtos novos, 5 vinculos em produto_empresa,
+a unidade CX cadastrada e os codigos de barras inseridos.
+
+TESTAR AS MENSAGENS DE ERRO (opcional)
+--------------------------------------
+Abra o arquivo, apague o conteudo de uma celula obrigatoria
+(ex.: proCodigo ou proDescricao de uma linha) e salve. Ao iniciar,
+o app deve BLOQUEAR e mostrar exatamente qual campo/linha esta
+vazio, alem de gerar um arquivo ERROS_*.txt/.csv na pasta de logs.
+
+RELATORIOS GERADOS (pasta de logs)
+----------------------------------
+- LOG_MAX_IMPORTA_*.log            (log em tempo real)
+- RELATORIO_MAX_IMPORTA_*.txt      (fechamento)
+- RESULTADO_PRODUTOS_*.json        (resumo estruturado)
+- ERROS_PRODUTOS_*.txt / *.csv     (se houver erros)
+
+Precisa de arquivos de teste para CLIENTES e FINANCEIRO tambem?
+E so pedir que eu gero no mesmo padrao.
