@@ -1,6 +1,8 @@
 # ── Build / PyInstaller ────────────────────────────────────────────────
 build/
 dist/
+installer/
+redist/
 __pycache__/
 *.pyc
 .pytest_cache/

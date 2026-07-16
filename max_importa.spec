@@ -42,7 +42,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # scipy/matplotlib sao dependencias OPCIONAIS do pandas (extra "computation"/
+    # plot) e NAO sao usadas pelo Max_Importa (que so le .txt/.csv via read_csv).
+    # Eram arrastadas sem necessidade — incham o build e o UPX de um .pyd do scipy
+    # (_gufuncs) chegou a falhar com PermissionError (antivirus travando o arquivo
+    # comprimido). Excluir remove o inchaco e o arquivo problematico.
+    excludes=['scipy', 'matplotlib'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
