@@ -5,14 +5,17 @@
   por CÓPIA do BD_ZERO (backup COPY_ONLY + restore), com um Database Snapshot para
   reverter o estado a cada teste. O BD_ZERO original NUNCA é tocado.
 
-Credenciais/instância vêm de variáveis de ambiente (com fallback para o ambiente
-de teste local). Se o SQL Server não responder, os testes de banco fazem SKIP —
-a suíte continua verde em máquinas sem o servidor.
+Credenciais/instância vêm de variáveis de ambiente. A SENHA não tem default (nunca
+fica no código-fonte): sem MI_TEST_PASS, os testes de banco fazem SKIP. Se o SQL
+Server não responder, também fazem SKIP — a suíte continua verde em máquinas sem
+o servidor.
 
     MI_TEST_SERVER  (default: localhost\\BD_2022)
     MI_TEST_USER    (default: sa)
-    MI_TEST_PASS    (default: macro01)
+    MI_TEST_PASS    (SEM default — obrigatória p/ rodar os testes de banco)
     MI_TEST_SRCDB   (default: BD_ZERO)   banco-modelo a ser copiado
+
+Ex.:  set MI_TEST_PASS=suasenha  &&  python -m pytest
 """
 import os
 import sys
@@ -25,7 +28,7 @@ if _ROOT not in sys.path:
 
 SERVER = os.environ.get("MI_TEST_SERVER", r"localhost\BD_2022")
 USER   = os.environ.get("MI_TEST_USER", "sa")
-PWD    = os.environ.get("MI_TEST_PASS", "macro01")
+PWD    = os.environ.get("MI_TEST_PASS")   # sem default: senha NUNCA no código-fonte
 SRC_DB = os.environ.get("MI_TEST_SRCDB", "BD_ZERO")
 
 
@@ -114,6 +117,9 @@ class _BDController:
 def bd_test():
     """Prepara o banco descartável uma vez por sessão; dropa no fim.
     SKIP automático se o SQL Server de teste não estiver acessível."""
+    if not PWD:
+        pytest.skip("defina MI_TEST_PASS para rodar os testes de banco "
+                    "(a senha não fica no código-fonte)")
     try:
         import pyodbc  # noqa: F401
     except Exception:

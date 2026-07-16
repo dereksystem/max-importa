@@ -34,10 +34,16 @@ banco, sem abrir tela. As migrações de **produtos/financeiro** reusam a janela
 importadora (constroem GUI) e por isso ficam para a Fase B+ (exigem um modo headless em
 `_get_importador`).
 
-**Requer** o SQL Server de teste acessível; senão, os testes de banco fazem **SKIP**
-(a suíte continua verde). Credenciais via env: `MI_TEST_SERVER` / `MI_TEST_USER` /
-`MI_TEST_PASS` / `MI_TEST_SRCDB` (defaults: `localhost\BD_2022`, `sa`, `macro01`,
-`BD_ZERO`).
+**Requer** o SQL Server de teste acessível **e a variável `MI_TEST_PASS` definida**;
+senão, os testes de banco fazem **SKIP** (a suíte continua verde). Credenciais via
+env: `MI_TEST_SERVER` / `MI_TEST_USER` / `MI_TEST_PASS` / `MI_TEST_SRCDB`
+(defaults: `localhost\BD_2022`, `sa`, **sem default — obrigatória**, `BD_ZERO`).
+A senha **nunca** fica no código-fonte. Ex.:
+
+```
+set MI_TEST_PASS=suasenha
+python -m pytest
+```
 
 ## Como rodar
 Na pasta da instalação (`C:\Max\MaxImporta\instalacao`):
