@@ -359,6 +359,11 @@ def test_migracao_produtos_via_headless(orig_conn, db_conn):
     e usando o importador HEADLESS (não abre janela)."""
     from mi_importadores import ProdutosImportadorHeadless
     src_emp = (orig_conn.cursor().execute("SELECT TOP 1 cofId FROM config").fetchone() or [1])[0]
+    # Se a origem (BD_ZERO) não tiver produtos, não há o que migrar: a migração nem
+    # cria o importador headless. Pula em vez de falhar (BD_ZERO pode estar zerado).
+    prod_origem = orig_conn.cursor().execute("SELECT COUNT(*) FROM produto").fetchone()[0]
+    if prod_origem == 0:
+        pytest.skip("BD_ZERO sem produtos — nada a migrar neste teste")
     prod_antes = db_conn.cursor().execute("SELECT COUNT(*) FROM produto").fetchone()[0]
 
     mig = _harness_migracao(SRC_DB)
@@ -380,6 +385,11 @@ def test_migracao_financeiro_via_headless(orig_conn, db_conn):
     inseriu exatamente 'inseridos' linhas, sem erro, via o importador headless."""
     from mi_importadores import FinanceiroImportadorHeadless
     src_emp = (orig_conn.cursor().execute("SELECT TOP 1 cofId FROM config").fetchone() or [1])[0]
+    # Se a origem (BD_ZERO) não tiver lançamentos, não há o que migrar: a migração
+    # nem cria o importador headless. Pula em vez de falhar (BD_ZERO pode estar zerado).
+    vp_origem = orig_conn.cursor().execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
+    if vp_origem == 0:
+        pytest.skip("BD_ZERO sem lançamentos em vendaPgto — nada a migrar neste teste")
     vp_antes = db_conn.cursor().execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
 
     mig = _harness_migracao(SRC_DB)

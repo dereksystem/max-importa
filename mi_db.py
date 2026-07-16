@@ -228,12 +228,23 @@ class MapeamentoDBMixin:
         return None
 
     def _lookup_cli_id(self, cursor, cpf_cnpj):
-        """Busca cliId pelo CPF/CNPJ na tabela cliente."""
+        """Busca cliId pelo CPF/CNPJ na tabela cliente. Cacheia por execução: na
+        migração/financeiro muitos lançamentos repetem o mesmo cliente (e a tabela
+        cliente não muda durante o INSERT do financeiro), então evita 1 SELECT por
+        linha em bancos com dezenas de milhares de lançamentos."""
         if not cpf_cnpj:
             return None
-        cursor.execute(
-            "SELECT TOP 1 cliId FROM cliente WHERE cliCpfCgc = ?",
-            (str(cpf_cnpj).strip(),)
-        )
+        cpf = str(cpf_cnpj).strip()
+        if not cpf:
+            return None
+        cache = getattr(self, "_lookup_cache", None)
+        if cache is None:
+            cache = self._lookup_cache = {}
+        chave = ("__cli_id__", cpf)
+        if chave in cache:
+            return cache[chave]
+        cursor.execute("SELECT TOP 1 cliId FROM cliente WHERE cliCpfCgc = ?", (cpf,))
         row = cursor.fetchone()
-        return row[0] if row else None
+        rid = row[0] if row else None
+        cache[chave] = rid
+        return rid

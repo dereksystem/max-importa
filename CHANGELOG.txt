@@ -321,7 +321,7 @@ BOTÃO CANCELAR — interromper importação/migração com segurança
 --------------------------------------------------------
 SEGURANÇA — Credenciais de conexão
 - A senha padrão NÃO fica mais embutida no binário. Antes o app
-  trazia 'sa'/'macro01' fixos no código (qualquer um que abrisse o
+  trazia usuário E senha fixos no código (qualquer um que abrisse o
   .exe conseguia extrair a senha). Agora só o usuário padrão 'sa'
   (que não é segredo) é sugerido; a senha começa VAZIA e é digitada.
 - Nova opção de AUTENTICAÇÃO no diálogo "Editar credenciais":
@@ -452,6 +452,115 @@ VISUAL — Clean Corporate agora aplica as SUPERFICIES (correcao)
   Corporate. Botoes seguem o vermelho da marca (#CC0000).
 - Continua sem alterar nenhuma funcao/logica — so cores/tema.
   Padrao CLARO; o botao de tema do menu alterna claro/escuro.
+
+--------------------------------------------------------
+ [3.6.3] - 2026-07-06
+--------------------------------------------------------
+CORRECAO — pasta de logs padrao no .exe (C:\Max\MaxImporta\Log)
+- BUG: instalado como .exe (PyInstaller one-file), o app NAO usava
+  C:\Max\MaxImporta\Log como padrao e a configuracao NAO persistia.
+  Causa: o caminho base vinha de __file__, que no one-file aponta
+  para a pasta TEMPORARIA de extracao (sys._MEIPASS), apagada ao
+  fechar. Assim o Log e o max_importa.ini iam parar na temp.
+- CORRECAO: quando "frozen", o caminho base passa a ser a pasta REAL
+  do executavel (os.path.dirname(sys.executable)). Instalado em
+  C:\Max\MaxImporta, o padrao volta a ser C:\Max\MaxImporta\Log e o
+  .ini persiste ao lado do exe.
+
+NOVO — pergunta antes de criar a pasta de logs
+- Na abertura, se a pasta de logs nao existir, um dialogo Sim/Nao
+  pergunta se deve cria-la (e grava o caminho no .ini). O
+  "Configurar pasta de logs" tambem pergunta antes de criar pasta
+  inexistente. Gravacoes mantem rede de seguranca (makedirs) para
+  nao quebrar se a pasta for removida durante o uso.
+
+CORRECAO — truncamento de cliFatEndNumero (numero do endereco)
+- A coluna real e varchar(10), mas o INSERT truncava em 20 e o
+  UPDATE NAO truncava — um numero de endereco longo causaria erro
+  22001 (dados truncados) no banco. Agora corta corretamente em 10
+  no INSERT e no UPDATE de clientes.
+
+--------------------------------------------------------
+ [3.6.4] - 2026-07-06
+--------------------------------------------------------
+CORRECAO — migracao Max->Max travava nos Produtos (log_lines)
+- A migracao de Produtos/Financeiro (que usa importadores
+  "headless") parava logo no primeiro log do INSERT com:
+  AttributeError: 'ProdutosImportadorHeadless' object has no
+  attribute 'log_lines'.
+- Causa: a JanelaMigracao injeta seu _log, que ESPELHA cada
+  linha em _imp_atual.log_lines (relatorio da entidade), mas o
+  _ImportadorHeadless nunca criava esse atributo.
+- Correcao: o headless agora inicializa log_lines = []. Clientes
+  e Permissoes nao eram afetados (usam copia direta cross-db).
+- Teste de regressao sem banco adicionado (o gate padrao
+  -m "not db" nao cobria o caminho de migracao, que exige banco).
+
+--------------------------------------------------------
+ [3.6.5] - 2026-07-06
+--------------------------------------------------------
+CORRECAO — migracao do Financeiro travava e Cancelar nao parava
+Bancos com dezenas de milhares de lancamentos (ex.: 140k+) faziam
+a migracao do Financeiro parecer travada por 40+ min, e o botao
+Cancelar nao tinha efeito. Causas e correcoes:
+- Cancelar nao propagava: setava o _cancelado da JANELA, mas o loop
+  roda num importador headless com o _cancelado DELE. Agora
+  _pedir_cancelamento propaga p/ _imp_atual._cancelado.
+- Log por linha inundava a GUI: cada "nao encontrado — pulado" (e
+  cada erro) ia p/ tela via after(); com 140k linhas a fila do Tk
+  entupia e a interface congelava. Agora os logs por linha sao
+  AMOSTRADOS (primeiros 5 + a cada 500/50); todos seguem no
+  relatorio/CSV e no resumo. Vale p/ produtos/clientes/financeiro.
+- AttributeError no fim do Financeiro: _aviso_nao_encontrados (so
+  da GUI) era acessado no headless quando havia nao-encontrados.
+  Corrigido (lazy + guard).
+
+PERFORMANCE — Financeiro
+- Cache de lookup CPF->cliId por execucao (a tabela cliente nao muda
+  durante o INSERT) — evita 1 SELECT por linha.
+- Commit em LOTE (a cada 500) em vez de por linha, com savepoint por
+  linha que preserva o isolamento de erro (linha ruim e desfeita
+  sozinha, sem derrubar o lote).
+
+--------------------------------------------------------
+ [3.6.6] - 2026-07-06
+--------------------------------------------------------
+MIGRACAO DE CLIENTES — copia COMPLETA de cliente/cliente_empresa
+- ANTES: a migracao de clientes copiava so ~18 campos (o cadastro
+  basico). Os outros 400+ campos de cliente ficavam NULL/default no
+  destino (end. cobranca, limite credito, celular, obs, data nasc,
+  tabela preco...), e cliente_empresa era criada ZERADA.
+- AGORA: copia TODAS as colunas (exceto computed) de cliente (440) e
+  cliente_empresa (18), mantendo cliId/cleId (IDENTITY_INSERT), lendo
+  a origem em streaming.
+- Passa a desabilitar tambem as FKs de saida (cliVendPref,
+  cliTabPreco, cliImpostoId...) durante a copia, reabilitando ao
+  final (sem validar quando a linha referenciada nao existe).
+- cliente_empresa vem da origem p/ a empresa do destino (empId
+  remapeado); cliente sem vinculo recebe uma linha minima.
+
+--------------------------------------------------------
+ [3.6.7] - 2026-07-13
+--------------------------------------------------------
+CORRECAO — botao "Iniciar Migracao" sumia no dialogo de opcoes
+- No wizard "Confirmar migracao — opcoes", quando Produtos NAO
+  estava marcado (ex.: Clientes + Permissoes + Financeiro), a janela
+  era criada com 460px, mas o conteudo precisa de ~518 (cabecalho +
+  scroll de 340 + mensagem + botoes) => os botoes Iniciar/Cancelar
+  ficavam cortados. Agravava o fato de o scroll ser empacotado ANTES
+  dos botoes com expand=True, ficando com todo o espaco livre.
+- CORRECAO: o rodape (botoes + mensagem de erro) agora e FIXO —
+  empacotado com side="bottom" ANTES do scroll, garantindo o espaco
+  dele. O scroll ocupa so o que sobra (encolhe e rola). O botao fica
+  SEMPRE visivel, em qualquer combinacao de opcoes. Altura ajustada
+  (560 / 520 / 420 conforme as secoes exibidas).
+
+VERIFICADO (sem alteracao) — fabricante/grupo/subgrupo em produtos
+- Confirmado por teste real: quando informados no arquivo, sao
+  CRIADOS em fabricante, grupoProd e subGrupoProd, e os ids gerados
+  sao VINCULADOS ao produto (proFab, proGrupo, proSubGrupo); o
+  subgrupo fica ligado ao grupo (sgpIdGdp). Idem classe
+  (proClasseId). Sem erros.
 
 --------------------------------------------------------
  [Próxima versão] - a definir

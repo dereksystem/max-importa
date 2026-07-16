@@ -72,6 +72,23 @@ class MigracaoMixin:
         except Exception:
             return []
 
+    def _colunas_completas(self, conn, tabela):
+        """TODAS as colunas inseríveis da tabela (na ordem), excluindo apenas as
+        computed e rowversion/timestamp (não aceitam INSERT). INCLUI a identity —
+        o chamador usa SET IDENTITY_INSERT para preservar o id. Usado na cópia
+        COMPLETA de cliente/cliente_empresa (todos os campos)."""
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT c.name FROM sys.columns c "
+                "JOIN sys.types ty ON ty.user_type_id = c.user_type_id "
+                "WHERE c.object_id = OBJECT_ID(?) AND c.is_computed = 0 "
+                "AND ty.name NOT IN ('timestamp', 'rowversion') "
+                "ORDER BY c.column_id", (tabela,))
+            return [r[0] for r in cur.fetchall()]
+        except Exception:
+            return []
+
     def _copiar_ref_faltante(self, orig_conn, dest_conn, tabela, cod_col, codigos):
         """Copia da ORIGEM para o DESTINO os registros de uma tabela de referência
         (proNCM/proCEST) cujo código está em `codigos` mas NÃO existe no destino.
@@ -719,6 +736,25 @@ class MigracaoMixin:
             self._log(f"⚠️ Não foi possível listar FKs: {str(e)[:120]}")
             return []
 
+    def _fks_da_tabela(self, conn, tabelas):
+        """Retorna [(schema.tabela, constraint)] das FKs DEFINIDAS NAS tabelas (de
+        saída — ex.: cliente.cliVendPref → cliente, cliente.cliTabPreco → tabPreco).
+        Precisam ser desabilitadas na cópia COMPLETA, senão copiar o valor dessas
+        colunas-FK viola a restrição se a linha referenciada não existir no destino."""
+        try:
+            cur = conn.cursor()
+            placeholders = ",".join("OBJECT_ID(?)" for _ in tabelas)
+            cur.execute(
+                "SELECT s.name, t.name, fk.name "
+                "FROM sys.foreign_keys fk "
+                "JOIN sys.tables t ON t.object_id = fk.parent_object_id "
+                "JOIN sys.schemas s ON s.schema_id = t.schema_id "
+                f"WHERE fk.parent_object_id IN ({placeholders})", tabelas)
+            return [(f"[{r[0]}].[{r[1]}]", f"[{r[2]}]") for r in cur.fetchall()]
+        except Exception as e:
+            self._log(f"⚠️ Não foi possível listar FKs de saída: {str(e)[:120]}")
+            return []
+
     def _fks_desabilitadas(self, conn):
         """FKs DESABILITADAS (is_disabled=1) — sinal de migração interrompida
         (FKs que ficaram sem enforcement). Não considera as apenas 'não confiáveis'
@@ -789,11 +825,12 @@ class MigracaoMixin:
 
     def _migrar_clientes(self, orig_conn, dest_conn, src_emp):
         """Migração de CLIENTES tipo 'banco zero': avisa o usuário, DESABILITA as
-        FKs que referenciam cliente/cliente_empresa, LIMPA UsuarioPermissao,
-        cliente_empresa e cliente do destino, reseta os identities, copia os
-        clientes IDÊNTICOS à origem (mantendo TODOS os cliId, sem validação de
-        obrigatórios e sem a regra de cliId reservado 1-10) e REABILITA as FKs.
-        Também trata nomes duplicados (cliNome + cliCpfCgc)."""
+        FKs (as que referenciam E as definidas em cliente/cliente_empresa), LIMPA
+        UsuarioPermissao, cliente_empresa e cliente do destino, reseta os identities,
+        copia cliente e cliente_empresa COMPLETOS — TODAS as colunas (exceto computed),
+        mantendo TODOS os cliId — e REABILITA as FKs. A cliente_empresa é copiada da
+        origem para a empresa do destino (empId remapeado); cliente sem vínculo na
+        origem recebe uma linha mínima. Também trata nomes duplicados (cliNome+cliCpfCgc)."""
         rot = self._ROTULOS["clientes"]
         op = getattr(self, "_opcoes", None) or {}
 
@@ -802,21 +839,37 @@ class MigracaoMixin:
             self._log(f"── {rot}: ciência da limpeza não confirmada. Nada foi alterado.")
             return {"inseridos": 0, "pulados": 0, "erros": 0}
 
-        # 2) Lê a origem (TODOS os cliId, campos idênticos)
-        self._log(f"── {rot}: lendo da origem (todos os clientes)...")
-        df = self._df_origem(orig_conn, self._sql_clientes(orig_conn, src_emp, todos=True))
-        total = len(df)
+        # 2) Colunas a copiar = TODAS (origem ∩ destino), exceto computed. INCLUI a
+        #    identity (usamos SET IDENTITY_INSERT p/ manter os ids). Cópia COMPLETA.
+        dcols_cli = self._cols(dest_conn, "cliente")
+        dcols_ce  = self._cols(dest_conn, "cliente_empresa")
+        cli_cols = [c for c in self._colunas_completas(orig_conn, "cliente")
+                    if c.lower() in dcols_cli]
+        ce_cols  = [c for c in self._colunas_completas(orig_conn, "cliente_empresa")
+                    if c.lower() in dcols_ce]
+        if not cli_cols:
+            self._log(f"❌ {rot}: não foi possível ler as colunas de cliente.")
+            return {"inseridos": 0, "pulados": 0, "erros": 1}
+        lc_cli   = [c.lower() for c in cli_cols]
+        i_cliid  = lc_cli.index("cliid")
+        i_desat  = lc_cli.index("clidesativa") if "clidesativa" in lc_cli else None
+        i_datcad = lc_cli.index("clidatcad")   if "clidatcad"   in lc_cli else None
+
+        # 3) Duplicados: mesmo cliNome + cliCpfCgc (leitura leve, só 3 colunas)
+        self._log(f"── {rot}: lendo da origem (todas as colunas)...")
+        oc = orig_conn.cursor()
+        oc.execute("SELECT cliId, cliNome, cliCpfCgc FROM cliente")
+        base = oc.fetchall()
+        total = len(base)
         self._log(f"── {rot}: {total} cliente(s) na origem.")
         if total == 0:
             return {"inseridos": 0, "pulados": 0, "erros": 0}
-
-        # 3) Duplicados: mesmo cliNome + cliCpfCgc
         desativar_ids = set()
         grupos = {}
-        for _, r in df.iterrows():
-            nome = (r.get("cliNome") or "").strip().upper()
-            cpf  = re.sub(r"\D", "", r.get("cliCpfCgc") or "")
-            cid  = self._to_int(r.get("cliId"))
+        for cid_r, nome_r, cpf_r in base:
+            nome = (str(nome_r).strip().upper() if nome_r else "")
+            cpf  = re.sub(r"\D", "", str(cpf_r) if cpf_r else "")
+            cid  = self._to_int(cid_r)
             if cid is None or (not nome and not cpf):
                 continue
             grupos.setdefault((nome, cpf), []).append(cid)
@@ -836,6 +889,19 @@ class MigracaoMixin:
                 self._log(f"── {rot}: {n_grupos} nome(s)+CPF repetido(s) ({n_extra} extras) "
                           f"MANTIDOS como na origem (opção do usuário).")
 
+        # cliente_empresa da origem (para src_emp), COMPLETA, indexada por cliId
+        ce_por_cli = {}
+        i_ce_emp = i_ce_cli = i_ce_cle = None
+        if ce_cols:
+            lc_ce    = [c.lower() for c in ce_cols]
+            i_ce_cli = lc_ce.index("cliid")
+            i_ce_emp = lc_ce.index("empid") if "empid" in lc_ce else None
+            i_ce_cle = lc_ce.index("cleid") if "cleid" in lc_ce else None
+            oc.execute(f"SELECT {', '.join('['+c+']' for c in ce_cols)} "
+                       f"FROM cliente_empresa WHERE empId = ?", src_emp)
+            for r in oc.fetchall():
+                ce_por_cli[self._to_int(r[i_ce_cli])] = list(r)
+
         # 4) empId do destino (para cliente_empresa)
         try:
             dc0 = dest_conn.cursor(); dc0.execute("SELECT TOP 1 cofId FROM config")
@@ -843,12 +909,18 @@ class MigracaoMixin:
         except Exception:
             dest_emp = 1
 
-        # 5) Desabilita as FKs que referenciam cliente/cliente_empresa (num banco
-        #    "zero" há usuários-base referenciados por várias tabelas — ex.:
-        #    lotacUsuario, UsuarioPermissao). Como os cliId são mantidos idênticos,
-        #    as referências das demais tabelas continuam válidas ao reabilitar.
+        # 5) Desabilita as FKs que REFERENCIAM cliente/cliente_empresa (p/ limpar) E
+        #    as DEFINIDAS NELAS (de saída) — necessário porque a cópia completa traz
+        #    colunas-FK (cliVendPref, cliTabPreco, cliImpostoId...) que podem apontar
+        #    p/ linhas ausentes no destino. Reabilitadas ao final (sem validar se preciso).
         dc = dest_conn.cursor()
-        fks = self._fks_referenciando(dest_conn, ["cliente", "cliente_empresa"])
+        fks = self._fks_referenciando(dest_conn, ["cliente", "cliente_empresa"]) \
+            + self._fks_da_tabela(dest_conn, ["cliente", "cliente_empresa"])
+        vistos = set(); fks_u = []
+        for item in fks:
+            if item not in vistos:
+                vistos.add(item); fks_u.append(item)
+        fks = fks_u
         dest_conn.autocommit = True
         desab = []
         for tbl, fk in fks:
@@ -857,9 +929,9 @@ class MigracaoMixin:
                 desab.append((tbl, fk))
             except Exception as e:
                 self._log(f"⚠️ {rot}: não desabilitou FK {fk} de {tbl}: {str(e)[:80]}")
-        self._log(f"── {rot}: {len(desab)} FK(s) desabilitada(s) temporariamente para a limpeza.")
+        self._log(f"── {rot}: {len(desab)} FK(s) desabilitada(s) temporariamente.")
 
-        inseridos = erros = desativados = 0
+        inseridos = erros = desativados = ce_ins = 0
         try:
             # LIMPA em transação (se falhar, nada é apagado)
             self._log(f"── {rot}: limpando 'UsuarioPermissao', 'cliente_empresa' e 'cliente'...")
@@ -887,44 +959,28 @@ class MigracaoMixin:
                 except Exception:
                     pass
             self._log(f"── {rot}: contadores (identity) resetados para iniciar do 1.")
-
-            # 6) INSERT idêntico mantendo cliId (IDENTITY_INSERT)
-            self._log(f"── {rot}: inserindo {total} cliente(s) no destino...")
-            dest_conn.autocommit = False
             _zero = Decimal('0.00000')
+
+            # 6) INSERT cliente — TODAS as colunas, mantendo cliId (IDENTITY_INSERT).
+            #    Streaming da origem (não carrega 440 colunas × N linhas na memória).
+            collist_cli = ", ".join(f"[{c}]" for c in cli_cols)
+            marks_cli   = ", ".join("?" for _ in cli_cols)
+            self._log(f"── {rot}: inserindo {total} cliente(s) (todas as {len(cli_cols)} colunas)...")
+            dest_conn.autocommit = False
             dc.execute("SET IDENTITY_INSERT cliente ON")
-            for _, r in df.iterrows():
-                cid = self._to_int(r.get("cliId"))
+            oc.execute(f"SELECT {collist_cli} FROM cliente ORDER BY cliId")
+            for r in oc:
+                cid = self._to_int(r[i_cliid])
                 if cid is None:
                     erros += 1
                     continue
+                vals = list(r)
+                if i_desat is not None and cid in desativar_ids:
+                    vals[i_desat] = -1
+                    desativados += 1
                 try:
-                    desat    = -1 if cid in desativar_ids else self._to_int(r.get("cliDesativa"))
-                    data_inc = self._to_dt(r.get("DataInclusao"))
-                    dc.execute("""
-                        INSERT INTO cliente (cliId, cliCpfCgc, cliNome, cliFantasia, cliRgInsc,
-                            cliFatEnd, cliFatEndNumero, cliFatBairro, cliFatCidade, cliFatCidCodIBGE,
-                            cliFatUf, cliFatCep, cliEmail, cliFone, cliDesativa, cliTipoCad,
-                            cliTipo, cliDatCad)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (cid, self._to_str(r.get("cliCpfCgc")), self._to_str(r.get("cliNome")),
-                          self._to_str(r.get("cliFantasia")), self._to_str(r.get("cliRgInsc")),
-                          self._to_str(r.get("cliFatEnd")), self._to_str(r.get("cliFatEndNumero")),
-                          self._to_str(r.get("cliFatBairro")), self._to_str(r.get("cliFatCidade")),
-                          self._to_int(r.get("cliFatCidCodIBGE")), self._to_str(r.get("cliFatUf")),
-                          self._to_str(r.get("cliFatCep")), self._to_str(r.get("cliEmail")),
-                          self._to_str(r.get("cliFone")), desat, self._to_int(r.get("cliTipoCad")),
-                          self._to_int(r.get("cliTipo")), data_inc))
-                    dc.execute("""
-                        INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,
-                            cliDescontoAutoAplicar, cliDescontoAutoAliq,
-                            cliMaxdataRateioCredito_Aliq_01, cliMaxdataRateioCredito_Aliq_02,
-                            cliMaxdataRateioCredito_Aliq_03, cliDatCad)
-                        VALUES (?,?,?,?,?,?,?,?,?)
-                    """, (dest_emp, cid, 0, 0, _zero, _zero, _zero, _zero, data_inc))
+                    dc.execute(f"INSERT INTO cliente ({collist_cli}) VALUES ({marks_cli})", vals)
                     inseridos += 1
-                    if desat == -1:
-                        desativados += 1
                     if inseridos % 500 == 0:
                         dest_conn.commit()
                         self._log(f"── {rot}: {inseridos} inseridos...")
@@ -932,15 +988,68 @@ class MigracaoMixin:
                     erros += 1
                     if erros <= 5:
                         self._log(f"❌ {rot}: erro cliId={cid}: {str(e)[:150]}")
+            dc.execute("SET IDENTITY_INSERT cliente OFF")
+            dest_conn.commit()
 
-            # finaliza: desliga IDENTITY_INSERT e ajusta o seed para o MAX real
-            try:
-                dc.execute("SET IDENTITY_INSERT cliente OFF")
+            # 7) INSERT cliente_empresa — COMPLETA (origem p/ src_emp), remapeando
+            #    empId → dest_emp. Cliente sem vínculo na origem recebe um mínimo.
+            if ce_cols:
+                collist_ce = ", ".join(f"[{c}]" for c in ce_cols)
+                marks_ce   = ", ".join("?" for _ in ce_cols)
+                self._log(f"── {rot}: inserindo cliente_empresa (todas as {len(ce_cols)} colunas)...")
+                dc.execute("SET IDENTITY_INSERT cliente_empresa ON")
+                max_cle = 0
+                # 7a) vínculos existentes na origem (cópia completa)
+                for cid, ce in ce_por_cli.items():
+                    vals = list(ce)
+                    if i_ce_emp is not None:
+                        vals[i_ce_emp] = dest_emp
+                    if i_ce_cle is not None:
+                        cle = self._to_int(ce[i_ce_cle])
+                        if cle is not None:
+                            max_cle = max(max_cle, cle)
+                    try:
+                        dc.execute(f"INSERT INTO cliente_empresa ({collist_ce}) VALUES ({marks_ce})", vals)
+                        ce_ins += 1
+                        if ce_ins % 500 == 0:
+                            dest_conn.commit()
+                    except Exception as e:
+                        erros += 1
+                        if erros <= 8:
+                            self._log(f"❌ {rot}: erro cliente_empresa cliId={cid}: {str(e)[:150]}")
+                # 7b) clientes sem vínculo na origem → linha mínima (mantém o vínculo)
+                prox_cle = max_cle
+                oc2 = orig_conn.cursor()
+                oc2.execute("SELECT cliId, cliDatCad FROM cliente")
+                for cid_r, datcad in oc2.fetchall():
+                    cid = self._to_int(cid_r)
+                    if cid is None or cid in ce_por_cli:
+                        continue
+                    prox_cle += 1
+                    minimo = {"cleid": prox_cle, "empid": dest_emp, "cliid": cid,
+                              "clidatcad": datcad, "clicalculaicmssubst": 0,
+                              "clidescontoautoaplicar": 0, "clidescontoautoaliq": _zero,
+                              "climaxdatarateiocredito_aliq_01": _zero,
+                              "climaxdatarateiocredito_aliq_02": _zero,
+                              "climaxdatarateiocredito_aliq_03": _zero}
+                    vals = [minimo.get(c.lower(), None) for c in ce_cols]
+                    try:
+                        dc.execute(f"INSERT INTO cliente_empresa ({collist_ce}) VALUES ({marks_ce})", vals)
+                        ce_ins += 1
+                    except Exception as e:
+                        erros += 1
+                        if erros <= 8:
+                            self._log(f"❌ {rot}: erro cliente_empresa (mínimo) cliId={cid}: {str(e)[:150]}")
+                dc.execute("SET IDENTITY_INSERT cliente_empresa OFF")
                 dest_conn.commit()
-                dc.execute("SELECT ISNULL(MAX(cliId), 0) FROM cliente")
-                mx = dc.fetchone()[0]
+
+            # finaliza: ajusta o seed dos identities para o MAX real
+            try:
                 dest_conn.autocommit = True
-                dc.execute(f"DBCC CHECKIDENT ('cliente', RESEED, {mx})")
+                for t, col in (("cliente", "cliId"), ("cliente_empresa", "cleId")):
+                    dc.execute(f"SELECT ISNULL(MAX({col}), 0) FROM {t}")
+                    mx = dc.fetchone()[0]
+                    dc.execute(f"DBCC CHECKIDENT ('{t}', RESEED, {mx})")
             except Exception as e:
                 self._log(f"⚠️ {rot}: pós-ajuste do identity: {str(e)[:120]}")
         finally:
@@ -967,8 +1076,8 @@ class MigracaoMixin:
             except Exception:
                 pass
 
-        self._log(f"── {rot}: ✅ {inseridos} inseridos | ⛔ {desativados} desativados "
-                  f"| ❌ {erros} erros")
+        self._log(f"── {rot}: ✅ {inseridos} cliente(s) | 🔗 {ce_ins} vínculo(s) empresa "
+                  f"| ⛔ {desativados} desativados | ❌ {erros} erros")
         return {"inseridos": inseridos, "pulados": desativados, "erros": erros}
 
     # helpers de conversão (migração direta, sem importador)

@@ -8,6 +8,113 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.7] — 2026-07-13
+
+### Correção — botão "Iniciar Migração" sumia no diálogo de opções
+- No wizard **Confirmar migração — opções**, quando **Produtos não estava marcado**
+  (ex.: Clientes + Permissões + Financeiro), a janela era criada com **460px** de
+  altura, mas o conteúdo precisa de ~518 (cabeçalho + scroll de 340 + mensagem +
+  botões) → os botões **Iniciar Migração / Cancelar ficavam cortados**. Agravava o
+  problema o `scroll` ser empacotado **antes** dos botões com `expand=True`, ficando
+  com todo o espaço livre.
+- **Correção:** o rodapé (botões + mensagem de erro) agora é **fixo** — empacotado
+  com `side="bottom"` **antes** do scroll, garantindo o espaço dele. O scroll passa a
+  ocupar só o que sobra (encolhe e rola). O botão fica **sempre visível**, em qualquer
+  combinação de opções. Altura do diálogo ajustada (560 / 520 / 420 conforme as seções).
+
+### Verificado (sem alteração) — fabricante / grupo / subgrupo na importação de produtos
+- Confirmado por teste real: quando informados no arquivo, são **criados** em
+  `fabricante`, `grupoProd` e `subGrupoProd`, e os ids gerados são **vinculados ao
+  produto** (`proFab`, `proGrupo`, `proSubGrupo`); o subgrupo fica ligado ao grupo
+  (`sgpIdGdp`). Idem para a classe (`proClasseId`). Sem erros.
+
+---
+
+## [3.6.6] — 2026-07-06
+
+### Migração de clientes — cópia COMPLETA de `cliente` e `cliente_empresa`
+- **Antes:** a migração de clientes copiava só ~18 campos (o cadastro básico, os
+  mesmos do import por arquivo). Os outros **400+ campos** de `cliente` ficavam
+  NULL/default no destino (endereço de cobrança, limite de crédito, celular, obs,
+  data de nascimento, tabela de preço, etc.), e `cliente_empresa` era criada **zerada**.
+- **Agora:** copia **TODAS as colunas** (exceto *computed*) de `cliente` (440) e
+  `cliente_empresa` (18), mantendo os `cliId`/`cleId` (via `IDENTITY_INSERT`), lendo a
+  origem em *streaming* (não carrega tudo na memória).
+- Passa a **desabilitar também as FKs de saída** (`cliVendPref`, `cliTabPreco`,
+  `cliImpostoId`…) durante a cópia, reabilitando ao final (sem validar quando a linha
+  referenciada não existe no destino — mesmo padrão já usado para as FKs de entrada).
+- `cliente_empresa` é copiada da origem para a empresa do destino (`empId` remapeado);
+  cliente sem vínculo na origem recebe uma linha mínima (mantém o vínculo).
+- Novos helpers `_colunas_completas` e `_fks_da_tabela` em `mi_migracao.py`.
+
+---
+
+## [3.6.5] — 2026-07-06
+
+### Correção — migração do Financeiro travava e o Cancelar não parava
+Bancos com dezenas de milhares de lançamentos (ex.: 140k+) faziam a migração do
+Financeiro parecer "travada" por 40+ min, e o botão **Cancelar** não tinha efeito.
+Causas e correções:
+- **Cancelar não propagava:** setava o `_cancelado` da janela, mas o loop roda num
+  importador *headless* com o `_cancelado` **dele**. Agora `_pedir_cancelamento`
+  propaga para `_imp_atual._cancelado` → o loop para na próxima linha.
+- **Log por linha inundava a GUI:** cada "CPF/CNPJ não encontrado — pulado" (e cada
+  erro) era logado via `after()`; com 140k linhas, a fila do Tk entupia e a interface
+  congelava (o clique no Cancelar mal era processado). Agora os logs por linha são
+  **amostrados** (primeiros 5 + a cada 500/50); todos seguem no relatório/CSV e no
+  resumo. Vale para produtos/clientes/financeiro.
+- **AttributeError no fim do Financeiro:** `_aviso_nao_encontrados` (método só da GUI)
+  era acessado no headless quando havia linhas não encontradas. Corrigido (lazy + guard).
+
+### Performance — Financeiro
+- **Cache de lookup CPF→cliId** por execução (a tabela cliente não muda durante o
+  INSERT do financeiro) — evita 1 SELECT por linha.
+- **Commit em lote** (a cada 500) em vez de por linha, com **savepoint por linha** que
+  preserva o isolamento de erro (linha ruim é desfeita sozinha, sem derrubar o lote).
+
+---
+
+## [3.6.4] — 2026-07-06
+
+### Correção — migração Max→Max travava nos Produtos (`log_lines`)
+- A migração de **Produtos/Financeiro** (que usa importadores *headless*) parava logo
+  no primeiro log do INSERT com `AttributeError: 'ProdutosImportadorHeadless' object
+  has no attribute 'log_lines'`.
+- **Causa:** a `JanelaMigracao` injeta seu `_log`, que **espelha** cada linha em
+  `_imp_atual.log_lines` (relatório da entidade), mas `_ImportadorHeadless.__init__`
+  nunca criava esse atributo.
+- **Correção:** o headless agora inicializa `log_lines = []`. **Clientes/Permissões**
+  não eram afetados (usam cópia direta cross-database).
+- Adicionado **teste de regressão sem banco** (o gate padrão `-m "not db"` não cobria
+  o caminho de migração, que exige banco).
+
+---
+
+## [3.6.3] — 2026-07-06
+
+### Correção — pasta de logs padrão no `.exe` (C:\Max\MaxImporta\Log)
+- **Bug:** instalado como `.exe` (PyInstaller *one-file*), o app **não** usava
+  `C:\Max\MaxImporta\Log` como padrão e a configuração **não persistia**. Causa: o
+  caminho base era derivado de `__file__`, que no one-file aponta para a pasta
+  **temporária** de extração (`sys._MEIPASS`) — apagada ao fechar. Logo o `Log` e o
+  `max_importa.ini` iam parar na temp.
+- **Correção:** quando *frozen*, o caminho base passa a ser a pasta **real do
+  executável** (`os.path.dirname(sys.executable)`). Instalado em `C:\Max\MaxImporta`,
+  o padrão volta a ser `C:\Max\MaxImporta\Log` e o `.ini` persiste ao lado do exe.
+
+### Novo — pergunta antes de criar a pasta de logs
+- Na abertura, se a pasta de logs não existir, um diálogo **Sim/Não** pergunta se deve
+  criá-la (e grava o caminho no `.ini`). O "Configurar pasta de logs" também pergunta
+  antes de criar uma pasta inexistente. Gravações mantêm rede de segurança
+  (`makedirs`) para não quebrar se a pasta for removida durante o uso.
+
+### Correção — truncamento de `cliFatEndNumero` (número do endereço)
+- A coluna real é `varchar(10)`, mas o INSERT truncava em **20** e o UPDATE **não
+  truncava** — um número de endereço longo causaria erro 22001 (dados truncados) no
+  banco. Agora corta corretamente em **10** no INSERT e no UPDATE de clientes.
+
+---
+
 ## [3.6.2] — 2026-07-05
 
 ### Visual — Clean Corporate agora aplica as superfícies (correção)
@@ -105,7 +212,7 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 ## [3.2.1] — 2026-07-04
 
 ### Segurança — Credenciais de conexão
-- A **senha padrão saiu do binário**. Antes o app trazia `sa`/`macro01` **fixos no
+- A **senha padrão saiu do binário**. Antes o app trazia usuário **e senha fixos no
   código** (extraíveis do `.exe`). Agora só o usuário `sa` (não é segredo) é sugerido;
   a **senha começa vazia** e é digitada pelo usuário.
 - Novo seletor de **autenticação** em *Editar credenciais*:

@@ -189,6 +189,13 @@ class CancelavelMixin:
         if getattr(self, "_cancelado", False):
             return
         self._cancelado = True
+        # Na migração, a entidade em andamento roda num importador HEADLESS que tem
+        # seu PRÓPRIO _cancelado. Sem propagar, o loop dele (ex.: financeiro com 140k
+        # linhas) checaria um flag nunca setado e não pararia. Propaga p/ ele parar
+        # cooperativamente na próxima linha.
+        imp = getattr(self, "_imp_atual", None)
+        if imp is not None:
+            imp._cancelado = True
         try:
             self._log("⏹️ Cancelamento solicitado — encerrando com segurança "
                       "(o registro/entidade em andamento é concluído)...")
@@ -259,6 +266,38 @@ class CancelavelMixin:
                 text_color=TC_STATUS_OK)
 
 
+def garantir_pasta_logs(parent):
+    """Na inicialização: se a pasta de logs configurada (padrão = ao lado do .exe,
+    ex.: C:\\Max\\MaxImporta\\Log) ainda NÃO existir, PERGUNTA ao usuário se deseja
+    criá-la. Se sim, cria e grava o caminho no max_importa.ini (passa a persistir).
+    Se não, apenas avisa que dá para configurar depois. Retorna o caminho garantido
+    ou None se o usuário recusou / houve erro."""
+    log_dir = _get_log_dir()
+    if os.path.isdir(log_dir):
+        return log_dir
+    criar = messagebox.askyesno(
+        "Pasta de logs não encontrada",
+        "A pasta onde os logs e relatórios de importação serão salvos ainda não "
+        f"existe:\n\n{log_dir}\n\nDeseja criá-la agora?",
+        parent=parent)
+    if not criar:
+        messagebox.showinfo(
+            "Pasta de logs",
+            "Nenhuma pasta foi criada. Você pode definir/criar a pasta a qualquer "
+            "momento em \"Configurar pasta de logs\", no menu principal.",
+            parent=parent)
+        return None
+    try:
+        _set_log_dir(log_dir)   # cria a pasta e grava o caminho no .ini
+        return log_dir
+    except Exception as e:
+        messagebox.showerror(
+            "Erro ao criar pasta",
+            f"Não foi possível criar a pasta de logs:\n{log_dir}\n\n{e}",
+            parent=parent)
+        return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # JANELA 1 – Login / Conexão com SQL Server
 # ─────────────────────────────────────────────────────────────────────────────
@@ -286,6 +325,9 @@ class JanelaLogin(ctk.CTk):
         self._senha    = cx["senha"]
         self._lembrar  = cx["lembrar"]
         self._build()
+        # Pergunta (uma vez, na abertura) se deve criar a pasta de logs quando ela
+        # não existir — ex.: primeiro uso após instalar em C:\Max\MaxImporta.
+        garantir_pasta_logs(self)
 
     def _identidade_txt(self):
         """Texto exibido no rótulo 'Usuario' conforme o modo de autenticação."""
@@ -667,6 +709,12 @@ class JanelaMenu(ctk.CTkToplevel):
             if not pasta:
                 messagebox.showwarning("Atenção", "Informe uma pasta válida.", parent=dlg)
                 return
+            if not os.path.isdir(pasta):
+                if not messagebox.askyesno(
+                        "Criar pasta?",
+                        f"A pasta abaixo ainda não existe:\n\n{pasta}\n\nDeseja criá-la?",
+                        parent=dlg):
+                    return
             _set_log_dir(pasta)
             dlg.destroy()
             messagebox.showinfo("Configuração salva",
@@ -2320,7 +2368,10 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
         dlg.title("Confirmar migração — opções")
         dlg.resizable(False, False)
         dlg.transient(self)
-        centralizar(dlg, 640, 560 if (tem_cli and tem_prd) else 460)
+        # Altura conforme as seções exibidas (o rodapé é fixo, então o botão aparece
+        # em qualquer altura — isto é só para o conteúdo não ficar apertado).
+        centralizar(dlg, 640, 560 if (tem_cli and tem_prd)
+                    else (520 if (tem_cli or tem_prd) else 420))
 
         res = {"ok": False}
         v_ciente = ctk.BooleanVar(value=False)
@@ -2336,8 +2387,11 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
         ctk.CTkLabel(dlg, text="Responda tudo agora — a migração roda sem interrupções.",
                      font=ctk.CTkFont(size=11), text_color="gray").pack(pady=(0, 8))
 
+        # Criado agora, mas empacotado só NO FIM: os botões do rodapé são empacotados
+        # ANTES (side="bottom") para reservarem o espaço deles. Assim o scroll fica
+        # com o que sobra e o botão de confirmar NUNCA some, independentemente das
+        # opções marcadas / da altura da janela.
         scroll = ctk.CTkScrollableFrame(dlg, width=590, height=340)
-        scroll.pack(padx=20, pady=(0, 8), fill="both", expand=True)
 
         fb = ctk.CTkFrame(scroll, corner_radius=8)
         fb.pack(fill="x", padx=4, pady=6)
@@ -2393,7 +2447,6 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
                                font=ctk.CTkFont(size=11)).pack(anchor="w", padx=24, pady=(2, 10))
 
         lbl_err = ctk.CTkLabel(dlg, text="", font=ctk.CTkFont(size=11), text_color=MD_RED)
-        lbl_err.pack()
 
         def _ok():
             if tem_cli and not v_ciente.get():
@@ -2404,13 +2457,19 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
                         "prd_negativos": v_neg.get(), "backup": bool(v_backup.get())})
             dlg.destroy()
 
+        # Rodapé FIXO: empacotado ANTES do scroll e ancorado embaixo, então sempre
+        # tem espaço garantido (o scroll é que encolhe/rola). Ordem: 1º o frame dos
+        # botões (vai pro fundo), 2º a mensagem de erro (fica logo acima dele).
         bot = ctk.CTkFrame(dlg, fg_color="transparent")
-        bot.pack(pady=(2, 14))
+        bot.pack(side="bottom", pady=(2, 14))
         ctk.CTkButton(bot, text="▶  Iniciar Migração", width=220, height=40,
                       fg_color=MD_RED, hover_color=MD_RED_HOV,
                       font=ctk.CTkFont(size=13, weight="bold"), command=_ok).pack(side="left", padx=8)
         ctk.CTkButton(bot, text="Cancelar", width=140, height=40, fg_color="transparent",
                       border_width=1, text_color=TC_TEXT_MAIN, command=dlg.destroy).pack(side="left", padx=8)
+        lbl_err.pack(side="bottom")
+        # Agora sim o scroll ocupa o espaço restante entre o cabeçalho e o rodapé.
+        scroll.pack(padx=20, pady=(0, 8), fill="both", expand=True)
 
         dlg.after(150, lambda: (dlg.lift(), dlg.focus_force(),
                                  dlg.grab_set() if dlg.winfo_exists() else None))

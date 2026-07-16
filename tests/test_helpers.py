@@ -112,7 +112,7 @@ def test_calc_cli_tipo_mapeado_tem_prioridade():
 # DPAPI — cifra/decifra da senha salva
 # ─────────────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("segredo", [
-    "macro01",
+    "senha-fake-teste",
     "S3nh@ com acento çãõ e símbolos !@#%^&*()",
     "x" * 500,
 ])
@@ -145,14 +145,14 @@ def ini_tmp(tmp_path, monkeypatch):
 
 
 def test_conexao_sql_lembrar_cifra_senha(ini_tmp):
-    m._set_conexao("SRV\\INST", "sa", "sql", "macro01", True)
+    m._set_conexao("SRV\\INST", "sa", "sql", "senha-fake-teste", True)
     cx = m._get_conexao()
     assert cx == {"servidor": "SRV\\INST", "usuario": "sa", "auth": "sql",
-                  "senha": "macro01", "lembrar": True}
+                  "senha": "senha-fake-teste", "lembrar": True}
     # a senha NÃO pode aparecer em texto puro no arquivo
     with open(ini_tmp, encoding="utf-8") as f:
         conteudo = f.read()
-    assert "macro01" not in conteudo
+    assert "senha-fake-teste" not in conteudo
     assert "[Conexao]" in conteudo
 
 
@@ -166,8 +166,8 @@ def test_conexao_windows_nao_grava_senha(ini_tmp):
 
 
 def test_conexao_sem_lembrar_remove_secao(ini_tmp):
-    m._set_conexao("SRV\\INST", "sa", "sql", "macro01", True)   # grava
-    m._set_conexao("SRV\\INST", "sa", "sql", "macro01", False)  # desmarca lembrar
+    m._set_conexao("SRV\\INST", "sa", "sql", "senha-fake-teste", True)   # grava
+    m._set_conexao("SRV\\INST", "sa", "sql", "senha-fake-teste", False)  # desmarca lembrar
     with open(ini_tmp, encoding="utf-8") as f:
         assert "[Conexao]" not in f.read()   # nada sensível fica em disco
     cx = m._get_conexao()
@@ -328,3 +328,57 @@ def test_status_mapeamento_todos_obrigatorios_ok():
         obrigatorios=["a", "b"])
     txt = obj.lbl_map_resumo.kw["text"]
     assert txt.startswith("✓") and "2/3" in txt and "obrigatórios OK" in txt
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Migração Max→Max: importador HEADLESS precisa de log_lines
+# Regressão: a JanelaMigracao injeta seu _log, que espelha cada linha em
+# _imp_atual.log_lines. Sem esse atributo no headless, _inserir_produtos/
+# _financeiro quebravam com AttributeError e a migração parava nos Produtos.
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("classe_nome", [
+    "ProdutosImportadorHeadless",
+    "ClientesImportadorHeadless",
+    "FinanceiroImportadorHeadless",
+])
+def test_headless_tem_log_lines_e_espelha(classe_nome):
+    import mi_importadores as mi
+
+    class _FakeMig:
+        """Reproduz JanelaMigracao._log (espelha no relatório da entidade)."""
+        def __init__(self):
+            self.log_lines = []
+            self._imp_atual = None
+        def _log(self, msg):
+            self.log_lines.append(msg)
+            if self._imp_atual is not None:
+                self._imp_atual.log_lines.append(msg)
+
+    mig = _FakeMig()
+    imp = getattr(mi, classe_nome)(log=mig._log)   # como _get_importador
+    assert imp.log_lines == []                     # atributo existe já no __init__
+    mig._imp_atual = imp                           # como _migrar_entidade
+    imp._log("Iniciando INSERT — 1 registro")      # antes: AttributeError
+    assert imp.log_lines == mig.log_lines and len(imp.log_lines) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cancelamento da migração deve PROPAGAR para o importador headless em execução.
+# Regressão: o loop do importador checa self._cancelado (o DELE). Se o cancelamento
+# só setasse o flag da janela, uma entidade grande (financeiro 140k linhas) não
+# pararia. _pedir_cancelamento agora também seta _imp_atual._cancelado.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_cancelamento_propaga_para_importador_headless():
+    from mi_importadores import FinanceiroImportadorHeadless
+
+    # Objeto com o comportamento do CancelavelMixin, sem GUI (via __new__).
+    obj = m.CancelavelMixin.__new__(m.CancelavelMixin)
+    obj._cancelado = False
+    obj._log = lambda *a, **k: None        # _pedir_cancelamento chama self._log
+    imp = FinanceiroImportadorHeadless(log=obj._log)
+    obj._imp_atual = imp                    # entidade em andamento
+
+    assert imp._cancelado is False
+    obj._pedir_cancelamento()
+    assert obj._cancelado is True
+    assert imp._cancelado is True           # propagou → o loop do importador vai parar

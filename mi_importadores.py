@@ -186,7 +186,8 @@ class ProdutosImportMixin:
                 self.conn.rollback()
                 erros += 1
                 nomes_erro.append(self._get_str(row, "proDescricao") or f"(linha {idx+2}, proId={pro_id})")
-                self._log(f"❌ Erro linha {idx+2} proId={pro_id}: {str(e)[:200]}")
+                if erros <= 5 or erros % 50 == 0:   # throttle: não inunda a GUI
+                    self._log(f"❌ Erro linha {idx+2} proId={pro_id}: {str(e)[:200]}")
 
             self._set_progresso(idx + 1, total)
 
@@ -353,7 +354,8 @@ class ProdutosImportMixin:
                 self.conn.rollback()
                 erros += 1
                 nomes_erro.append(self._get_str(row, "proDescricao") or f"(linha {idx+2}, proId={pro_id})")
-                self._log(f"❌ Erro linha {idx+2} proId={pro_id}: {str(e)[:200]}")
+                if erros <= 5 or erros % 50 == 0:   # throttle: não inunda a GUI
+                    self._log(f"❌ Erro linha {idx+2} proId={pro_id}: {str(e)[:200]}")
 
             self._set_progresso(idx + 1, total)
 
@@ -618,7 +620,7 @@ class ClientesImportMixin:
                         self._get_str_max(row, "cliFantasia",       50),
                         self._get_str_max(row, "cliRgInsc",         20),
                         self._get_str_max(row, "cliFatEnd",        120),
-                        self._get_str_max(row, "cliFatEndNumero",   20),
+                        self._get_str_max(row, "cliFatEndNumero",   10),
                         self._get_str_max(row, "cliFatBairro",      70),
                         self._get_str_max(row, "cliFatCidade",      30),
                         self._get_str_max(row, "cliFatUf",           2),
@@ -658,7 +660,7 @@ class ClientesImportMixin:
                         self._get_str_max(row, "cliFantasia",       50),
                         self._get_str_max(row, "cliRgInsc",         20),
                         self._get_str_max(row, "cliFatEnd",        120),
-                        self._get_str_max(row, "cliFatEndNumero",   20),
+                        self._get_str_max(row, "cliFatEndNumero",   10),
                         self._get_str_max(row, "cliFatBairro",      70),
                         self._get_str_max(row, "cliFatCidade",      30),
                         self._get_str_max(row, "cliFatUf",           2),
@@ -707,7 +709,8 @@ class ClientesImportMixin:
                 self.conn.rollback()
                 erros += 1
                 nomes_erro.append(self._get_str(row, "cliNome") or f"(linha {idx+2}, cliId={cli_id})")
-                self._log(f"❌ Erro linha {idx+2} cliId={cli_id}: {str(e)[:200]}")
+                if erros <= 5 or erros % 50 == 0:   # throttle: não inunda a GUI
+                    self._log(f"❌ Erro linha {idx+2} cliId={cli_id}: {str(e)[:200]}")
                 # Após rollback no modo identity, o seed SQL Server pode ter avançado.
                 # Reajusta para MAX real da tabela antes de tentar o próximo registro.
                 if usar_identity:
@@ -802,7 +805,7 @@ class ClientesImportMixin:
                     "cliFantasia":      (self._get_str, "cliFantasia"),
                     "cliRgInsc":        (self._get_str, "cliRgInsc"),
                     "cliFatEnd":        (self._get_str, "cliFatEnd"),
-                    "cliFatEndNumero":  (self._get_str, "cliFatEndNumero"),
+                    "cliFatEndNumero":  (lambda r, c: self._get_str_max(r, c, 10), "cliFatEndNumero"),
                     "cliFatBairro":     (self._get_str, "cliFatBairro"),
                     "cliFatCidade":     (self._get_str, "cliFatCidade"),
                     "cliFatUf":         (self._get_str, "cliFatUf"),
@@ -910,7 +913,7 @@ class ClientesImportMixin:
                     "cliFantasia":      (self._get_str, "cliFantasia"),
                     "cliRgInsc":        (self._get_str, "cliRgInsc"),
                     "cliFatEnd":        (self._get_str, "cliFatEnd"),
-                    "cliFatEndNumero":  (self._get_str, "cliFatEndNumero"),
+                    "cliFatEndNumero":  (lambda r, c: self._get_str_max(r, c, 10), "cliFatEndNumero"),
                     "cliFatBairro":     (self._get_str, "cliFatBairro"),
                     "cliFatCidade":     (self._get_str, "cliFatCidade"),
                     "cliFatUf":         (self._get_str, "cliFatUf"),
@@ -966,7 +969,8 @@ class ClientesImportMixin:
                 self.conn.rollback()
                 erros += 1
                 nomes_erro.append(self._get_str(row, "cliNome") or f"(linha {idx+2}, cliId={cli_id})")
-                self._log(f"❌ Erro linha {idx+2} cliId={cli_id}: {str(e)[:200]}")
+                if erros <= 5 or erros % 50 == 0:   # throttle: não inunda a GUI
+                    self._log(f"❌ Erro linha {idx+2} cliId={cli_id}: {str(e)[:200]}")
 
             self._set_progresso(idx + 1, total)
 
@@ -992,6 +996,11 @@ class FinanceiroImportMixin:
                   + (" | dedup ativo" if getattr(self, "_dedup_financeiro", False) else ""))
 
         nomes_erro = []       # CPF/CNPJ dos lancamentos que deram erro
+        # Commit em LOTE (não por linha) para throughput em bancos grandes. Um
+        # savepoint por linha preserva o isolamento de erro: uma linha ruim é
+        # desfeita sozinha, sem derrubar o lote já inserido.
+        BATCH_COMMIT = 500
+        desde_commit = 0
 
         for idx, row in self.df.iterrows():
             if self._cancelado:
@@ -1009,7 +1018,12 @@ class FinanceiroImportMixin:
                     linha_dict["_linha"]    = idx + 2
                     linha_dict["_cpfcnpj"]  = cpf_cnpj or ""
                     self.nao_encontrados.append(linha_dict)
-                    self._log(f"⚠️  Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' nao encontrado — pulado.")
+                    # Throttle: NÃO loga cada linha (bancos grandes têm dezenas de
+                    # milhares de lançamentos sem CPF → inundava a GUI e travava tudo).
+                    # Todos ficam em nao_encontrados (relatório/CSV) e no resumo final.
+                    if nao_enc <= 5 or nao_enc % 500 == 0:
+                        self._log(f"⚠️  Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' nao encontrado — "
+                                  f"pulado (amostra; {nao_enc} até agora).")
                     self._set_progresso(idx + 1, total)
                     continue
 
@@ -1037,6 +1051,7 @@ class FinanceiroImportMixin:
                         self._set_progresso(idx + 1, total)
                         continue
 
+                cursor.execute("SAVE TRANSACTION sp_fin")   # savepoint desta linha
                 cursor.execute("""
                     INSERT INTO vendaPgto (
                         empId,
@@ -1071,18 +1086,36 @@ class FinanceiroImportMixin:
                     self._get_str_max(row, "pgtNossoNumero", 30),
                 ))
 
-                self.conn.commit()
                 sucessos += 1
+                desde_commit += 1
+                if desde_commit >= BATCH_COMMIT:   # confirma o lote
+                    self.conn.commit()
+                    desde_commit = 0
                 if sucessos <= 5 or sucessos % 50 == 0:
                     self._log(f"✅ Linha {idx+2} inserida — cliId={cli_id} CPF/CNPJ={cpf_cnpj}")
 
             except Exception as e:
-                self.conn.rollback()
+                # Desfaz SÓ esta linha (mantém o lote não-commitado). Se o savepoint
+                # não existir (falha antes do INSERT), faz rollback total do lote.
+                try:
+                    cursor.execute("ROLLBACK TRANSACTION sp_fin")
+                except Exception:
+                    self.conn.rollback()
+                    desde_commit = 0
                 erros += 1
                 nomes_erro.append(self._get_str(row, "cliCpfCgc") or f"(linha {idx+2})")
-                self._log(f"❌ Erro linha {idx+2}: {str(e)[:200]}")
+                if erros <= 5 or erros % 50 == 0:   # throttle: não inunda a GUI
+                    self._log(f"❌ Erro linha {idx+2}: {str(e)[:200]}")
 
             self._set_progresso(idx + 1, total)
+
+        # Confirma o lote pendente (o que entrou desde o último commit), mesmo se
+        # a operação foi cancelada no meio.
+        if desde_commit > 0:
+            try:
+                self.conn.commit()
+            except Exception:
+                pass
 
         # ── Resumo final ─────────────────────────────────────────────────
         self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos "
@@ -1093,8 +1126,10 @@ class FinanceiroImportMixin:
                                   "pulados": nao_enc + duplicados, "erros": erros}
 
         # ── Aviso e opção de salvar linhas não encontradas ────────────────
-        if self.nao_encontrados:
-            self.after(0, self._aviso_nao_encontrados)
+        # lambda (lazy): no headless da migração, after() é no-op e NÃO acessa
+        # _aviso_nao_encontrados (método só da GUI) — evita AttributeError.
+        if self.nao_encontrados and hasattr(self, "_aviso_nao_encontrados"):
+            self.after(0, lambda: self._aviso_nao_encontrados())
 
         _pos_importacao(self, "FINANCEIRO", nomes_erro, erros > 0)
         self._salvar_relatorio()
@@ -1120,6 +1155,10 @@ class _ImportadorHeadless:
         self.csv_path = None
         self._ultimo_resultado = None
         self._lookup_cache = {}
+        # A migração injeta seu _log, que ESPELHA cada linha em _imp_atual.log_lines
+        # (o "relatório da entidade"). Sem esta lista, _inserir_produtos/_financeiro
+        # quebram com AttributeError ao logar. Ver JanelaMigracao._log.
+        self.log_lines = []
         self._log = log or (lambda *a, **k: None)
 
     def after(self, delay, func=None, *args, **kwargs):

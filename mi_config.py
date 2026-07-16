@@ -18,7 +18,7 @@ import configparser
 from ctypes import wintypes
 
 # ── Versao do aplicativo (MAJOR.MINOR.PATCH) ───────────────────────────────────
-APP_VERSION = "3.6.2"
+APP_VERSION = "3.6.7"
 
 # ── Paleta "Clean Corporate" — tuplas (claro, escuro) ──────────────────────────
 # O CustomTkinter troca a cor conforme o modo (light/dark) automaticamente.
@@ -45,7 +45,15 @@ def _resource_path(filename: str) -> str:
 
 
 # ── Configuração de pasta de logs (max_importa.ini) ───────────────────────────
-_APP_DIR         = os.path.dirname(os.path.abspath(__file__))
+# IMPORTANTE: no .exe (PyInstaller *one-file*), __file__ aponta para a pasta TEMP
+# de extração (sys._MEIPASS), que é APAGADA ao fechar o app. Se usássemos __file__,
+# o max_importa.ini e a pasta Log iriam parar na temp — a config nunca persistiria e
+# os logs sumiriam. Por isso, quando "frozen", usamos a pasta REAL do executável
+# (onde ele foi instalado, ex.: C:\Max\MaxImporta) → padrão vira C:\Max\MaxImporta\Log.
+if getattr(sys, "frozen", False):
+    _APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _INI_PATH        = os.path.join(_APP_DIR, "max_importa.ini")
 _DEFAULT_LOG_DIR = os.path.join(_APP_DIR, "Log")
 
@@ -71,8 +79,10 @@ def _set_log_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-# Garante que a pasta padrão existe já na inicialização
-os.makedirs(_get_log_dir(), exist_ok=True)
+# OBS: NÃO criamos a pasta de logs aqui no import. Quem cuida disso é a GUI
+# (garantir_pasta_logs, em max_importa.py), que PERGUNTA ao usuário antes de criar
+# caso a pasta não exista. As gravações de log mantêm um os.makedirs(exist_ok=True)
+# como rede de segurança, então nada quebra se a pasta for removida durante o uso.
 
 
 # ── Criptografia da senha via Windows DPAPI (CryptProtectData) ─────────────────
