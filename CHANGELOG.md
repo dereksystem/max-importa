@@ -8,6 +8,34 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.9] — 2026-07-13
+
+### 🚨 CRÍTICO — datas eram PERDIDAS (iam NULL) na importação/migração
+- `_get_datetime` retornava **None para toda entrada**: usava `s[:len(fmt)]`, mas
+  `len("%Y-%m-%d")` == 8 enquanto a data formatada tem 10 caracteres — truncava
+  `"2026-03-01"` para `"2026-03-"` e o parse falhava sempre.
+- **Impacto:** toda migração/importação de **Financeiro** gravava `pgtData`,
+  `pgtVecmto` e `pgtDataQuitou` **NULL**; idem `DataInclusao` de clientes. A
+  reconciliação (COUNT + SUM de valor) não detectava, pois não compara datas.
+- **Correção:** parse na string inteira (sem truncar), `datetime.fromisoformat`
+  para ISO, e uso direto quando o valor já é `datetime`/`Timestamp` (caso da
+  migração — a data vem do banco como objeto). NaT/None → NULL. **12 testes de
+  regressão** adicionados (não havia teste para `_get_datetime` — por isso passou).
+- **AÇÃO NECESSÁRIA:** migrações de Financeiro feitas em versões anteriores estão
+  com as datas NULL no destino e precisam ser **refeitas** com esta versão.
+
+### Performance — bulk insert no Financeiro (`fast_executemany`)
+- `_inserir_financeiro` passou a gravar em **lote** via `cursor.executemany` com
+  `fast_executemany=True` (envia o lote num único RPC — tipicamente 10-40× mais
+  rápido). Padrão **híbrido**: se um lote falhar, desfaz e reprocessa **linha-a-linha
+  só aquele lote**, isolando a(s) linha(s) ruim(s) sem perder as boas.
+- Dedup de idempotência preservado, inclusive a semântica NULL do SQL e a
+  deduplicação **dentro do próprio lote** (via conjunto de chaves pendentes).
+- Medido: ~1.760 linhas/s no ambiente de teste (as ~140k do exemplo caem de 40+ min
+  para ~1-2 min).
+
+---
+
 ## [3.6.8] — 2026-07-13
 
 ### Correção preventiva — `_calc_cli_tipo` movido para o mixin (robustez headless)

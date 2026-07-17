@@ -584,6 +584,31 @@ CORRECAO PREVENTIVA — _calc_cli_tipo movido p/ o mixin (headless)
   corrigidos.
 
 --------------------------------------------------------
+ [3.6.9] - 2026-07-13
+--------------------------------------------------------
+*** CRITICO *** — datas eram PERDIDAS (iam NULL) na migracao/import
+- _get_datetime retornava None para TODA entrada: usava s[:len(fmt)],
+  mas len("%Y-%m-%d")==8 e a data tem 10 chars — truncava
+  "2026-03-01" para "2026-03-" e o parse falhava sempre.
+- Impacto: toda migracao/importacao de Financeiro gravava pgtData,
+  pgtVecmto e pgtDataQuitou NULL; idem DataInclusao de clientes. A
+  reconciliacao (COUNT + SUM valor) nao detectava (nao compara datas).
+- Correcao: parse na string inteira (sem truncar), fromisoformat p/
+  ISO, e uso direto quando o valor ja e datetime/Timestamp (caso da
+  migracao). NaT/None -> NULL. 12 testes de regressao adicionados.
+- ACAO NECESSARIA: migracoes de Financeiro feitas em versoes
+  anteriores estao com datas NULL no destino e precisam ser REFEITAS
+  com esta versao.
+
+PERFORMANCE — bulk insert no Financeiro (fast_executemany)
+- _inserir_financeiro grava em LOTE via cursor.executemany com
+  fast_executemany=True (lote num unico RPC — tipicamente 10-40x mais
+  rapido). Padrao hibrido: se um lote falhar, desfaz e reprocessa
+  linha-a-linha so aquele lote, isolando a(s) ruim(s) sem perder as
+  boas. Dedup preservado (inclusive intra-lote e semantica NULL).
+- ~1.760 linhas/s no teste (as ~140k caem de 40+ min p/ ~1-2 min).
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

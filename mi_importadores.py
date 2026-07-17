@@ -1004,139 +1004,146 @@ class ClientesImportMixin:
 
 
 class FinanceiroImportMixin:
+    # SQL de INSERT do vendaPgto — módulo-nível (reutilizado no bulk e no fallback).
+    _SQL_INS_VENDAPGTO = (
+        "INSERT INTO vendaPgto (empId, pgtClienteId, pgtCliNome, pgtTipoVista, "
+        "pgtTipoPrazo, pgtValor, pgtNumDoc, pgtData, pgtVecmto, pgtObs, "
+        "pgtTipoConta, pgtPago, pgtDataQuitou, pgtNossoNumero) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    )
+
     def _inserir_financeiro(self):
-        cursor    = self.conn.cursor()
-        total     = len(self.df)
-        sucessos  = 0
-        erros     = 0
-        nao_enc   = 0
+        ins = self.conn.cursor()          # cursor do INSERT (bulk via executemany)
+        rd  = self.conn.cursor()          # cursor de leitura (lookup / dedup)
+        try:
+            ins.fast_executemany = True   # envia o lote num único RPC (10-40x)
+        except Exception:
+            pass
+        total      = len(self.df)
+        sucessos   = 0
+        erros      = 0
+        nao_enc    = 0
         duplicados = 0
-        emp_id    = self._get_emp_id(cursor)
+        emp_id     = self._get_emp_id(rd)
+        dedup_on   = bool(getattr(self, "_dedup_financeiro", False))
 
         self._log(f"Iniciando INSERT vendaPgto — {total} registros | empId={emp_id}"
-                  + (" | dedup ativo" if getattr(self, "_dedup_financeiro", False) else ""))
+                  + (" | dedup ativo" if dedup_on else "") + " | bulk (executemany)")
 
-        nomes_erro = []       # CPF/CNPJ dos lancamentos que deram erro
-        # Commit em LOTE (não por linha) para throughput em bancos grandes. Um
-        # savepoint por linha preserva o isolamento de erro: uma linha ruim é
-        # desfeita sozinha, sem derrubar o lote já inserido.
-        BATCH_COMMIT = 500
-        desde_commit = 0
+        nomes_erro = []          # CPF/CNPJ dos lancamentos que deram erro
+        SQL   = self._SQL_INS_VENDAPGTO
+        BATCH = 1000
+        lote  = []               # [(vals_tuple, idx, cpf_cnpj), ...]
+        pend  = set()            # chaves de dedup do lote AINDA não gravado
+
+        def flush():
+            """Grava o lote acumulado com executemany (caminho rápido). Se o lote
+            falhar (ex.: uma linha com valor/data inválidos), desfaz e reprocessa
+            linha-a-linha SÓ aquele lote, isolando a(s) ruim(s) sem perder as boas."""
+            nonlocal sucessos, erros, lote, pend
+            if not lote:
+                return
+            try:
+                ins.executemany(SQL, [t[0] for t in lote])
+                self.conn.commit()
+                sucessos += len(lote)
+            except Exception:
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                for vals, idx, cpf in lote:      # fallback isolado (caminho lento)
+                    try:
+                        ins.execute(SQL, vals)
+                        self.conn.commit()
+                        sucessos += 1
+                    except Exception as e:
+                        try:
+                            self.conn.rollback()
+                        except Exception:
+                            pass
+                        erros += 1
+                        nomes_erro.append(cpf or f"(linha {idx+2})")
+                        if erros <= 5 or erros % 50 == 0:
+                            self._log(f"❌ Erro linha {idx+2}: {str(e)[:200]}")
+            lote = []
+            pend = set()          # já gravado → o dedup por SELECT passa a enxergar
 
         for idx, row in self.df.iterrows():
             if self._cancelado:
                 break
-            try:
-                # ── Lookup CPF/CNPJ → cliId ──────────────────────────────
-                cpf_cnpj  = self._get_str(row, "cliCpfCgc")
-                cli_id    = self._lookup_cli_id(cursor, cpf_cnpj)
+            # ── Lookup CPF/CNPJ → cliId ────────────────────────────────────
+            cpf_cnpj = self._get_str(row, "cliCpfCgc")
+            cli_id   = self._lookup_cli_id(rd, cpf_cnpj)
+            if cli_id is None:
+                nao_enc += 1
+                linha_dict = {col: row.get(self.mapping[campo], "")
+                              for campo, col in
+                              [(c, self.mapping[c]) for c in self.mapping]}
+                linha_dict["_linha"]   = idx + 2
+                linha_dict["_cpfcnpj"] = cpf_cnpj or ""
+                self.nao_encontrados.append(linha_dict)
+                if nao_enc <= 5 or nao_enc % 500 == 0:
+                    self._log(f"⚠️  Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' nao encontrado — "
+                              f"pulado (amostra; {nao_enc} até agora).")
+                self._set_progresso(idx + 1, total)
+                continue
 
-                if cli_id is None:
-                    nao_enc += 1
-                    linha_dict = {col: row.get(self.mapping[campo], "")
-                                  for campo, col in
-                                  [(c, self.mapping[c]) for c in self.mapping]}
-                    linha_dict["_linha"]    = idx + 2
-                    linha_dict["_cpfcnpj"]  = cpf_cnpj or ""
-                    self.nao_encontrados.append(linha_dict)
-                    # Throttle: NÃO loga cada linha (bancos grandes têm dezenas de
-                    # milhares de lançamentos sem CPF → inundava a GUI e travava tudo).
-                    # Todos ficam em nao_encontrados (relatório/CSV) e no resumo final.
-                    if nao_enc <= 5 or nao_enc % 500 == 0:
-                        self._log(f"⚠️  Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' nao encontrado — "
-                                  f"pulado (amostra; {nao_enc} até agora).")
+            # ── Converte tipos ─────────────────────────────────────────────
+            pgt_valor      = self._get_decimal(row, "pgtValor")
+            pgt_data       = self._get_datetime(row, "pgtData")
+            pgt_vecmto     = self._get_datetime(row, "pgtVecmto")
+            pgt_data_quit  = self._get_datetime(row, "pgtDataQuitou")
+            pgt_tipo_vista = self._get_int(row, "pgtTipoVista")
+            pgt_tipo_prazo = self._get_int(row, "pgtTipoPrazo")
+            pgt_numdoc     = self._get_str_max(row, "pgtNumDoc", 30)
+            pgt_tipoconta  = self._get_str_max(row, "pgtTipoConta", 1)
+
+            # ── Idempotência (migração): pula se já existe lançamento igual ──
+            if dedup_on:
+                # O SELECT nunca casa se um campo comparado com '=' for NULL
+                # (semântica SQL). Só dedupamos DENTRO do lote quando a chave é
+                # totalmente casável — assim o comportamento é idêntico ao antigo.
+                casavel = (pgt_valor is not None and pgt_data is not None
+                           and pgt_vecmto is not None)
+                chave = (cli_id, pgt_valor, pgt_data, pgt_vecmto,
+                         pgt_numdoc or '', pgt_tipoconta or '')
+                if casavel and chave in pend:
+                    duplicados += 1
                     self._set_progresso(idx + 1, total)
                     continue
+                rd.execute(
+                    "SELECT TOP 1 1 FROM vendaPgto WHERE empId = ? AND pgtClienteId = ? "
+                    "AND pgtValor = ? AND pgtData = ? AND pgtVecmto = ? "
+                    "AND ISNULL(pgtNumDoc,'') = ISNULL(?,'') "
+                    "AND ISNULL(pgtTipoConta,'') = ISNULL(?,'')",
+                    (emp_id, cli_id, pgt_valor, pgt_data, pgt_vecmto,
+                     pgt_numdoc, pgt_tipoconta))
+                if rd.fetchone():
+                    duplicados += 1
+                    self._set_progresso(idx + 1, total)
+                    continue
+                if casavel:
+                    pend.add(chave)
 
-                # ── Converte tipos ────────────────────────────────────────
-                pgt_valor      = self._get_decimal(row, "pgtValor")
-                pgt_data       = self._get_datetime(row, "pgtData")
-                pgt_vecmto     = self._get_datetime(row, "pgtVecmto")
-                pgt_data_quit  = self._get_datetime(row, "pgtDataQuitou")
-                pgt_tipo_vista = self._get_int(row, "pgtTipoVista")
-                pgt_tipo_prazo = self._get_int(row, "pgtTipoPrazo")
-                pgt_numdoc     = self._get_str_max(row, "pgtNumDoc", 30)
-                pgt_tipoconta  = self._get_str_max(row, "pgtTipoConta", 1)
-
-                # ── Idempotência (migração): pula se já existe lançamento igual
-                if getattr(self, "_dedup_financeiro", False):
-                    cursor.execute(
-                        "SELECT TOP 1 1 FROM vendaPgto WHERE empId = ? AND pgtClienteId = ? "
-                        "AND pgtValor = ? AND pgtData = ? AND pgtVecmto = ? "
-                        "AND ISNULL(pgtNumDoc,'') = ISNULL(?,'') "
-                        "AND ISNULL(pgtTipoConta,'') = ISNULL(?,'')",
-                        (emp_id, cli_id, pgt_valor, pgt_data, pgt_vecmto,
-                         pgt_numdoc, pgt_tipoconta))
-                    if cursor.fetchone():
-                        duplicados += 1
-                        self._set_progresso(idx + 1, total)
-                        continue
-
-                cursor.execute("SAVE TRANSACTION sp_fin")   # savepoint desta linha
-                cursor.execute("""
-                    INSERT INTO vendaPgto (
-                        empId,
-                        pgtClienteId,
-                        pgtCliNome,
-                        pgtTipoVista,
-                        pgtTipoPrazo,
-                        pgtValor,
-                        pgtNumDoc,
-                        pgtData,
-                        pgtVecmto,
-                        pgtObs,
-                        pgtTipoConta,
-                        pgtPago,
-                        pgtDataQuitou,
-                        pgtNossoNumero
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    emp_id,
-                    cli_id,
-                    self._get_str_max(row, "pgtCliNome",    50),
-                    pgt_tipo_vista,
-                    pgt_tipo_prazo,
-                    pgt_valor,
-                    pgt_numdoc,
-                    pgt_data,
-                    pgt_vecmto,
-                    self._get_str_max(row, "pgtObs",      1000),
-                    pgt_tipoconta,
-                    self._get_str_max(row, "pgtPago",        1),
-                    pgt_data_quit,
-                    self._get_str_max(row, "pgtNossoNumero", 30),
-                ))
-
-                sucessos += 1
-                desde_commit += 1
-                if desde_commit >= BATCH_COMMIT:   # confirma o lote
-                    self.conn.commit()
-                    desde_commit = 0
-                if sucessos <= 5 or sucessos % 50 == 0:
-                    self._log(f"✅ Linha {idx+2} inserida — cliId={cli_id} CPF/CNPJ={cpf_cnpj}")
-
-            except Exception as e:
-                # Desfaz SÓ esta linha (mantém o lote não-commitado). Se o savepoint
-                # não existir (falha antes do INSERT), faz rollback total do lote.
-                try:
-                    cursor.execute("ROLLBACK TRANSACTION sp_fin")
-                except Exception:
-                    self.conn.rollback()
-                    desde_commit = 0
-                erros += 1
-                nomes_erro.append(self._get_str(row, "cliCpfCgc") or f"(linha {idx+2})")
-                if erros <= 5 or erros % 50 == 0:   # throttle: não inunda a GUI
-                    self._log(f"❌ Erro linha {idx+2}: {str(e)[:200]}")
-
+            vals = (
+                emp_id, cli_id,
+                self._get_str_max(row, "pgtCliNome", 50),
+                pgt_tipo_vista, pgt_tipo_prazo, pgt_valor, pgt_numdoc,
+                pgt_data, pgt_vecmto,
+                self._get_str_max(row, "pgtObs", 1000),
+                pgt_tipoconta,
+                self._get_str_max(row, "pgtPago", 1),
+                pgt_data_quit,
+                self._get_str_max(row, "pgtNossoNumero", 30),
+            )
+            lote.append((vals, idx, cpf_cnpj))
+            if len(lote) >= BATCH:
+                flush()
+                self._log(f"── vendaPgto: {sucessos} inseridos...")
             self._set_progresso(idx + 1, total)
 
-        # Confirma o lote pendente (o que entrou desde o último commit), mesmo se
-        # a operação foi cancelada no meio.
-        if desde_commit > 0:
-            try:
-                self.conn.commit()
-            except Exception:
-                pass
+        flush()      # grava o resto (mesmo se cancelado, confirma o que entrou)
 
         # ── Resumo final ─────────────────────────────────────────────────
         self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos "
