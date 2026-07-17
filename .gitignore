@@ -3,6 +3,7 @@ build/
 dist/
 installer/
 redist/
+graphify-out/
 __pycache__/
 *.pyc
 .pytest_cache/
