@@ -8,6 +8,27 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.10] — 2026-07-13
+
+### Reconciliação — validação de CONTEÚDO por coluna (pega perda silenciosa)
+- A reconciliação origem × destino comparava só **contagem** (COUNT) e **soma**
+  (SUM de valor/estoque). Isso não pega corrupção de conteúdo — foi por isso que o
+  bug de datas (3.6.9), que zerou 100% das datas, passou meses invisível.
+- Novo `_validar_conteudo`: compara a **taxa de preenchimento (não-NULL) por coluna**
+  entre origem e destino, **normalizada** (proporção — funciona mesmo com linhas
+  puladas/dedup/pré-existentes). Sinaliza:
+  - 🔴 **forte** quando origem ≥30% preenchida e destino ≤2% (coluna praticamente
+    vazia no destino — possível perda de dados);
+  - ⚠️ **aviso** quando o preenchimento cai mais de 15 pontos;
+  - ✅ resumo quando tudo coerente.
+- Colunas cobertas: clientes (nome, CPF, endereço/cobrança, limite, celular, e-mail…),
+  produtos (descrição, código, preço), financeiro (**pgtData/pgtVecmto/pgtDataQuitou**,
+  valor, cliente, documento…). Aparece no bloco "CONFERÊNCIA ORIGEM × DESTINO".
+- Validado contra dados reais corrompidos: sinalizou exatamente as 3 colunas de data
+  esvaziadas. 2 testes de regressão (sem banco) adicionados.
+
+---
+
 ## [3.6.9] — 2026-07-13
 
 ### 🚨 CRÍTICO — datas eram PERDIDAS (iam NULL) na importação/migração

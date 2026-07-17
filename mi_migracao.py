@@ -445,6 +445,66 @@ class MigracaoMixin:
                 pass
             self._log(f"⚠️ Não foi possível registrar a auditoria no destino: {str(e)[:150]}")
 
+    # Colunas de "conteúdo" cujo PREENCHIMENTO (não-NULL) deve ser coerente entre
+    # origem e destino. Pega corrupção de valor que COUNT/SUM não enxergam — ex.:
+    # uma coluna preenchida na origem que chega vazia no destino (foi assim que o
+    # bug de datas ficou meses invisível: a reconciliação por contagem/soma passava).
+    _COLS_CONTEUDO = {
+        "clientes": [("cliente", c) for c in (
+            "cliNome", "cliCpfCgc", "cliFatEnd", "cliFatCidade", "cliFatUf",
+            "cliDatCad", "cliCobEnd", "cliLimitCred", "cliCelular", "cliEmail")],
+        "produtos": [("produto", "proDescricao"),
+                     ("produto_empresa", "proCodigo"),
+                     ("produto_empresa", "proVenda")],
+        "financeiro": [("vendaPgto", c) for c in (
+            "pgtData", "pgtVecmto", "pgtDataQuitou", "pgtValor",
+            "pgtClienteId", "pgtCliNome", "pgtNumDoc", "pgtTipoConta")],
+    }
+
+    def _validar_conteudo(self, orig_conn, dest_conn, entidades):
+        """Valida CONTEÚDO (não só a contagem): compara a taxa de preenchimento
+        (não-NULL) de colunas-chave entre origem e destino. Normalizado (proporção),
+        então funciona mesmo quando o destino tem menos linhas (pulados/dedup/pré-
+        existentes). Sinaliza quando uma coluna preenchida na origem chega quase
+        vazia no destino — sinal de perda de dados silenciosa."""
+        def ratio(conn, tabela, col):
+            try:
+                cur = conn.cursor()
+                cur.execute(f"SELECT COUNT(*), COUNT([{col}]) FROM [{tabela}]")
+                tot, fill = cur.fetchone()
+                return (fill / float(tot)) if tot else None
+            except Exception:
+                return None
+
+        linhas, flags, checadas = [], 0, 0
+        for ent in entidades:
+            for tabela, col in self._COLS_CONTEUDO.get(ent, []):
+                if (col.lower() not in self._cols(orig_conn, tabela)
+                        or col.lower() not in self._cols(dest_conn, tabela)):
+                    continue
+                o = ratio(orig_conn, tabela, col)
+                d = ratio(dest_conn, tabela, col)
+                if o is None or d is None:
+                    continue
+                checadas += 1
+                op, dp = f"{o*100:.0f}%", f"{d*100:.0f}%"
+                if o >= 0.30 and d <= 0.02:
+                    flags += 1
+                    linhas.append(f"🔴 {tabela}.{col}: origem {op} preenchido, destino {dp} — "
+                                  f"coluna praticamente VAZIA no destino (possível perda de dados!)")
+                elif o - d > 0.15:
+                    flags += 1
+                    linhas.append(f"⚠️ {tabela}.{col}: preenchimento origem {op} → destino {dp} — "
+                                  f"caiu mais que o esperado")
+        if checadas:
+            if flags == 0:
+                linhas.append(f"✅ conteúdo: {checadas} coluna(s) com preenchimento coerente "
+                              f"origem × destino.")
+            else:
+                linhas.insert(0, f"⚠️ conteúdo: {flags} de {checadas} coluna(s) com "
+                                 f"preenchimento divergente:")
+        return linhas
+
     def _reconciliar(self, orig_conn, dest_conn, entidades, src_emp):
         """Confere ORIGEM × DESTINO após a migração: contagens por tabela e
         somas (estoque, valores do financeiro). Retorna as linhas do comparativo
@@ -540,6 +600,12 @@ class MigracaoMixin:
                  num(q(orig_conn, "SELECT SUM(ISNULL(pgtValor,0)) FROM vendaPgto")),
                  num(q(dest_conn, "SELECT SUM(ISNULL(pgtValor,0)) FROM vendaPgto")),
                  "segue os lançamentos pulados/pré-existentes")
+
+        # Validação de CONTEÚDO por coluna (pega corrupção que contagem/soma não veem)
+        conteudo = self._validar_conteudo(orig_conn, dest_conn, entidades)
+        if conteudo:
+            linhas.append("── VALIDAÇÃO DE CONTEÚDO (preenchimento não-NULL por coluna) ──")
+            linhas.extend(conteudo)
 
         return linhas
 

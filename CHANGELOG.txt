@@ -609,6 +609,27 @@ PERFORMANCE — bulk insert no Financeiro (fast_executemany)
 - ~1.760 linhas/s no teste (as ~140k caem de 40+ min p/ ~1-2 min).
 
 --------------------------------------------------------
+ [3.6.10] - 2026-07-13
+--------------------------------------------------------
+RECONCILIACAO — validacao de CONTEUDO por coluna
+- A reconciliacao origem x destino comparava so contagem (COUNT) e
+  soma (SUM). Nao pega corrupcao de conteudo — foi por isso que o
+  bug de datas (3.6.9) passou meses invisivel.
+- Novo _validar_conteudo: compara a taxa de preenchimento (nao-NULL)
+  por coluna entre origem e destino, NORMALIZADA (proporcao — vale
+  mesmo com linhas puladas/dedup/pre-existentes). Sinaliza:
+    * forte quando origem >=30% e destino <=2% (coluna vazia no
+      destino — possivel perda de dados);
+    * aviso quando o preenchimento cai mais de 15 pontos;
+    * resumo verde quando tudo coerente.
+- Cobre clientes (nome, CPF, endereco/cobranca, limite, celular...),
+  produtos (descricao, codigo, preco) e financeiro (pgtData/pgtVecmto/
+  pgtDataQuitou, valor, cliente, doc). Aparece no bloco CONFERENCIA
+  ORIGEM x DESTINO.
+- Validado contra dados reais corrompidos (sinalizou as 3 colunas de
+  data esvaziadas). 2 testes de regressao adicionados.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

@@ -139,6 +139,66 @@ def test_calc_cli_tipo_mapeado_tem_prioridade():
     assert obj._calc_cli_tipo({"t": "1", "doc": "123.456.789-01"}) == 1
 
 
+def test_validar_conteudo_flags_coluna_que_esvaziou():
+    """Reconciliação de CONTEÚDO: sinaliza quando uma coluna preenchida na origem
+    chega quase vazia no destino (o padrão exato do bug de datas). Colunas com
+    preenchimento coerente NÃO aparecem. Testa a lógica com conexões fake."""
+    import re as _re
+    mig = m.JanelaMigracao.__new__(m.JanelaMigracao)
+    TOTAL = 1000
+    ORIG = {"pgtData": 1.0, "pgtValor": 1.0, "pgtNumDoc": 0.4}
+    DEST = {"pgtData": 0.0, "pgtValor": 1.0, "pgtNumDoc": 0.4}   # só a data caiu p/ 0
+
+    class _Cur:
+        def __init__(self, fills): self.fills = fills; self._r = None
+        def execute(self, sql, *a):
+            if "sys.columns" in sql:
+                self._r = [(c,) for c in ("pgtData", "pgtValor", "pgtNumDoc")]
+            else:
+                col = _re.search(r"COUNT\(\[(\w+)\]\)", sql).group(1)
+                self._r = (TOTAL, int(TOTAL * self.fills.get(col, 0)))
+            return self
+        def fetchall(self): return self._r
+        def fetchone(self): return self._r
+
+    class _Conn:
+        def __init__(self, fills): self.fills = fills
+        def cursor(self): return _Cur(self.fills)
+
+    linhas = mig._validar_conteudo(_Conn(ORIG), _Conn(DEST), ["financeiro"])
+    txt = "\n".join(linhas)
+    assert "pgtData" in txt and "🔴" in txt          # data esvaziou → flag forte
+    assert "pgtValor" not in txt                      # 100%→100% → não aparece
+    assert "pgtNumDoc" not in txt                     # 40%→40% (coerente) → não aparece
+    assert any("divergente" in l for l in linhas)     # resumo acusa divergência
+
+
+def test_validar_conteudo_ok_quando_coerente():
+    """Sem divergência → linha de resumo verde, sem flags."""
+    import re as _re
+    mig = m.JanelaMigracao.__new__(m.JanelaMigracao)
+    fills = {"pgtData": 1.0, "pgtValor": 1.0, "pgtNumDoc": 0.4}
+
+    class _Cur:
+        def __init__(self): self._r = None
+        def execute(self, sql, *a):
+            if "sys.columns" in sql:
+                self._r = [(c,) for c in ("pgtData", "pgtValor", "pgtNumDoc")]
+            else:
+                col = _re.search(r"COUNT\(\[(\w+)\]\)", sql).group(1)
+                self._r = (1000, int(1000 * fills.get(col, 0)))
+            return self
+        def fetchall(self): return self._r
+        def fetchone(self): return self._r
+
+    class _Conn:
+        def cursor(self): return _Cur()
+
+    linhas = mig._validar_conteudo(_Conn(), _Conn(), ["financeiro"])
+    assert any(l.startswith("✅ conteúdo") for l in linhas)
+    assert not any("🔴" in l or "⚠️" in l for l in linhas)
+
+
 def test_calc_cli_tipo_no_importador_headless():
     """Regressão: _calc_cli_tipo vive no ClientesImportMixin (não só na GUI), então
     o ClientesImportadorHeadless (usado pela migração) também o tem. Antes, ele era
