@@ -630,6 +630,28 @@ RECONCILIACAO — validacao de CONTEUDO por coluna
   data esvaziadas). 2 testes de regressao adicionados.
 
 --------------------------------------------------------
+ [3.6.11] - 2026-07-13
+--------------------------------------------------------
+ROBUSTEZ E SEGURANCA DA MIGRACAO
+- Integridade referencial pos-migracao: a reconciliacao detecta FKs
+  DESABILITADAS no destino (sem enforcement) e linhas ORFAS
+  (referencia p/ pai inexistente) nas relacoes-chave (cliente_empresa
+  ->cliente, vendaPgto->cliente, produto_empresa->produto,
+  codBarras->produto). Pega o risco silencioso da FK nao-confiavel.
+- Backup OBRIGATORIO na migracao destrutiva: como Clientes e a unica
+  entidade que APAGA o destino, o backup fica marcado e travado no
+  wizard quando Clientes esta no plano (ponto de restauracao).
+- Retry em erro TRANSIENTE: deadlock (1205), lock/query timeout
+  (1222/-2), queda de conexao (08S01) re-tentam com backoff
+  exponencial em vez de abortar. Erro de dados (PK, truncamento,
+  NULL) NAO re-tenta. Aplicado no bulk do Financeiro; respeita
+  cancelamento.
+- Guard-rail (teste permanente): auditoria AST falha o CI se um mixin
+  de importacao usar self.X que so a GUI prove e o headless nao tem
+  (causa-raiz de 4 bugs: log_lines, _aviso_nao_encontrados,
+  cancelamento, _calc_cli_tipo). Fecha a classe de bug.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

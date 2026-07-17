@@ -2385,12 +2385,23 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
         fb.pack(fill="x", padx=4, pady=6)
         ctk.CTkLabel(fb, text="🛟  SEGURANÇA", font=ctk.CTkFont(size=13, weight="bold"),
                      text_color=MD_RED).pack(anchor="w", padx=12, pady=(10, 2))
-        ctk.CTkCheckBox(fb, text="Fazer BACKUP do banco de DESTINO antes de migrar (recomendado)",
-                        variable=v_backup, font=ctk.CTkFont(size=12)).pack(anchor="w", padx=12, pady=(0, 4))
+        # Backup OBRIGATÓRIO quando Clientes está no plano: essa é a única entidade
+        # que APAGA o destino (DELETE) antes de reinserir — sem um ponto de restauração,
+        # um erro no meio da inserção deixaria o destino com os dados apagados. Nesse
+        # caso o checkbox fica marcado e travado. Nos demais, é opcional (recomendado).
+        if tem_cli:
+            v_backup.set(True)
+        _txt_bkp = ("Fazer BACKUP do banco de DESTINO antes de migrar"
+                    + (" (OBRIGATÓRIO — Clientes limpa o destino)" if tem_cli else " (recomendado)"))
+        ctk.CTkCheckBox(fb, text=_txt_bkp, variable=v_backup, font=ctk.CTkFont(size=12),
+                        state=("disabled" if tem_cli else "normal")).pack(anchor="w", padx=12, pady=(0, 4))
+        _obs_bkp = ("Gera um .bak (COPY_ONLY) na pasta de backup do SQL Server. "
+                    "Se o backup falhar, a migração é abortada por segurança.")
+        if tem_cli:
+            _obs_bkp += (" Exigido porque a migração de Clientes APAGA o destino — o .bak "
+                         "é o seu ponto de restauração se algo falhar no meio.")
         ctk.CTkLabel(fb, wraplength=540, justify="left", font=ctk.CTkFont(size=10),
-                     text_color="gray",
-                     text="Gera um .bak (COPY_ONLY) na pasta de backup do SQL Server. "
-                          "Se o backup falhar, a migração é abortada por segurança.").pack(anchor="w", padx=12, pady=(0, 10))
+                     text_color="gray", text=_obs_bkp).pack(anchor="w", padx=12, pady=(0, 10))
 
         if tem_cli:
             fc = ctk.CTkFrame(scroll, fg_color=TC_FIELD_OBL_BG, corner_radius=8)

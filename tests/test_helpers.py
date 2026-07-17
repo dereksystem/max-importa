@@ -123,6 +123,64 @@ def test_get_datetime_pandas_timestamp_e_nat():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Retry de erros transientes do SQL Server (deadlock/timeout/queda de conexão)
+# ─────────────────────────────────────────────────────────────────────────────
+def test_e_transiente_classifica():
+    obj = _fake(m.JanelaFinanceiro, {})
+    # TRANSIENTES (vale re-tentar)
+    assert obj._e_transiente(Exception("Transaction was deadlocked ... victim. (1205)"))
+    assert obj._e_transiente(Exception("Lock request time out period exceeded. (1222)"))
+    assert obj._e_transiente(Exception("[HYT00] Query timeout expired"))
+    assert obj._e_transiente(Exception("08S01", "Communication link failure"))   # sqlstate em args[0]
+    # NÃO transientes (erro de DADOS — deve subir na hora)
+    assert not obj._e_transiente(Exception("Violation of PRIMARY KEY constraint (2627)"))
+    assert not obj._e_transiente(Exception("String or binary data would be truncated (8152)"))
+    assert not obj._e_transiente(Exception("Cannot insert the value NULL (515)"))
+
+
+def test_com_retry_repete_transiente_e_desiste_de_erro_de_dados(monkeypatch):
+    import time as _time
+    monkeypatch.setattr(_time, "sleep", lambda *a, **k: None)   # não espera de verdade
+    obj = _fake(m.JanelaFinanceiro, {})
+    obj._log = lambda *a, **k: None
+    obj._cancelado = False
+
+    # transiente: falha 2x, depois sucesso → retorna OK (3 chamadas)
+    chamadas = {"n": 0}
+    def op_transiente():
+        chamadas["n"] += 1
+        if chamadas["n"] < 3:
+            raise Exception("deadlock (1205)")
+        return "ok"
+    assert obj._com_retry(op_transiente, tentativas=4) == "ok"
+    assert chamadas["n"] == 3
+
+    # erro de dados: sobe na 1ª tentativa, SEM re-tentar
+    c2 = {"n": 0}
+    def op_dados():
+        c2["n"] += 1
+        raise Exception("Violation of PRIMARY KEY (2627)")
+    with pytest.raises(Exception):
+        obj._com_retry(op_dados, tentativas=4)
+    assert c2["n"] == 1
+
+
+def test_com_retry_para_se_cancelado(monkeypatch):
+    import time as _time
+    monkeypatch.setattr(_time, "sleep", lambda *a, **k: None)
+    obj = _fake(m.JanelaFinanceiro, {})
+    obj._log = lambda *a, **k: None
+    obj._cancelado = True                     # já cancelado
+    c = {"n": 0}
+    def op():
+        c["n"] += 1
+        raise Exception("deadlock (1205)")    # transiente, mas cancelado → não re-tenta
+    with pytest.raises(Exception):
+        obj._com_retry(op, tentativas=4)
+    assert c["n"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # _calc_cli_tipo — deriva cliTipo (0=PF, 1=PJ) do CPF/CNPJ
 # ─────────────────────────────────────────────────────────────────────────────
 def test_calc_cli_tipo_deriva_cpf_cnpj():
@@ -197,6 +255,61 @@ def test_validar_conteudo_ok_quando_coerente():
     linhas = mig._validar_conteudo(_Conn(), _Conn(), ["financeiro"])
     assert any(l.startswith("✅ conteúdo") for l in linhas)
     assert not any("🔴" in l or "⚠️" in l for l in linhas)
+
+
+def test_validar_integridade_fk_detecta_orfaos_e_fk_desabilitada():
+    """Integridade referencial: reporta FK desabilitada (sem enforcement) e linhas
+    órfãs (referência para pai inexistente). Testa com conexões fake."""
+    import re as _re
+    mig = m.JanelaMigracao.__new__(m.JanelaMigracao)
+    ORFAOS = {"vendaPgto": 12}          # 12 lançamentos p/ cliente inexistente
+
+    class _Cur:
+        def __init__(self): self._r = None
+        def execute(self, sql, *a):
+            if "is_disabled = 1" in sql:                    # _fks_desabilitadas
+                self._r = [("dbo", "cliente_empresa", "fk_ce_cli")]
+            elif "sys.columns" in sql:                      # _cols
+                self._r = [(c,) for c in ("cliId", "proId", "cdbIdProd", "pgtClienteId")]
+            elif "COUNT(*)" in sql:                          # órfãos
+                filha = _re.search(r"FROM \[(\w+)\]", sql).group(1)
+                self._r = (ORFAOS.get(filha, 0),)
+            return self
+        def fetchall(self): return self._r
+        def fetchone(self): return self._r
+
+    class _Conn:
+        def cursor(self): return _Cur()
+
+    linhas = mig._validar_integridade_fk(_Conn(), ["clientes", "financeiro"])
+    txt = "\n".join(linhas)
+    assert "DESABILITADA" in txt                            # FK sem enforcement
+    assert "12 linha(s) ÓRFÃ" in txt and "vendaPgto" in txt # órfãos detectados
+
+
+def test_validar_integridade_fk_ok_quando_limpo():
+    """Sem FK desabilitada e sem órfão → linha verde de resumo."""
+    mig = m.JanelaMigracao.__new__(m.JanelaMigracao)
+
+    class _Cur:
+        def __init__(self): self._r = None
+        def execute(self, sql, *a):
+            if "is_disabled = 1" in sql:
+                self._r = []                                # nenhuma FK desabilitada
+            elif "sys.columns" in sql:
+                self._r = [(c,) for c in ("cliId", "proId", "cdbIdProd", "pgtClienteId")]
+            elif "COUNT(*)" in sql:
+                self._r = (0,)                              # nenhum órfão
+            return self
+        def fetchall(self): return self._r
+        def fetchone(self): return self._r
+
+    class _Conn:
+        def cursor(self): return _Cur()
+
+    linhas = mig._validar_integridade_fk(_Conn(), ["financeiro"])
+    assert any(l.startswith("✅ integridade referencial") for l in linhas)
+    assert not any("🔴" in l for l in linhas)
 
 
 def test_calc_cli_tipo_no_importador_headless():
@@ -487,3 +600,80 @@ def test_cancelamento_propaga_para_importador_headless():
     obj._pedir_cancelamento()
     assert obj._cancelado is True
     assert imp._cancelado is True           # propagou → o loop do importador vai parar
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GUARD-RAIL estrutural (#10): nenhum mixin de importação pode depender de um
+# atributo que SÓ a GUI provê e que o importador HEADLESS (migração) não tem. Foi
+# a causa-raiz de 4 bugs desta linha (log_lines, _aviso_nao_encontrados,
+# _cancelado mal-propagado, _calc_cli_tipo). Este teste é a auditoria AST que
+# achou o _calc_cli_tipo, agora permanente: qualquer nova dependência assim FALHA.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_mixins_import_nao_dependem_de_atributos_so_da_gui():
+    import ast
+    import os
+
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _classes(arquivo):
+        with open(os.path.join(raiz, arquivo), encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        return {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+
+    imp = _classes("mi_importadores.py")
+    db = _classes("mi_db.py")
+
+    def _providos(cls):
+        """métodos + constantes de classe + atributos setados via self.X = ..."""
+        nomes = set()
+        # membros diretos do corpo da classe: métodos e constantes de classe
+        # (ex.: _SQL_INS_VENDAPGTO). Só o corpo direto — não locais de métodos.
+        for n in cls.body:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                nomes.add(n.name)
+            elif isinstance(n, ast.Assign):
+                for t in n.targets:
+                    if isinstance(t, ast.Name):
+                        nomes.add(t.id)
+            elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
+                nomes.add(n.target.id)
+        # atributos de instância setados via self.X = ... (em qualquer método)
+        for n in ast.walk(cls):
+            if isinstance(n, ast.Assign):
+                for t in n.targets:
+                    if (isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name)
+                            and t.value.id == "self"):
+                        nomes.add(t.attr)
+        return nomes
+
+    def _usados(cls):
+        return {n.attr for n in ast.walk(cls)
+                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+                and n.value.id == "self" and isinstance(n.ctx, ast.Load)}
+
+    # Providos a TODO headless: _ImportadorHeadless + MapeamentoDBMixin.
+    comum = _providos(imp["_ImportadorHeadless"]) | _providos(db["MapeamentoDBMixin"])
+    # Atributos setados de fora pela migração (ver JanelaMigracao._migrar_entidade).
+    externos = {"conn", "df", "mapping", "_ultimo_resultado", "nao_encontrados",
+                "_dedup_financeiro", "FLOAT_NOT_NULL"}
+    # GUI-only cujo uso nos mixins é COMPROVADAMENTE seguro no headless:
+    #   btn_import / btn_acerto → só dentro de self.after(0, lambda: ...); no headless
+    #     after() é no-op e a lambda nunca chega a acessar o atributo.
+    #   _aviso_nao_encontrados → protegido por hasattr(self, ...) antes do uso.
+    # Adicionar aqui SÓ com justificativa — cada item é uma dependência GUI consciente.
+    allowlist_gui_seguro = {"btn_import", "btn_acerto", "_aviso_nao_encontrados"}
+
+    problemas = {}
+    for mixin in ("ProdutosImportMixin", "ClientesImportMixin", "FinanceiroImportMixin"):
+        provido = comum | _providos(imp[mixin]) | externos
+        suspeitos = {a for a in _usados(imp[mixin])
+                     if a not in provido and not a.startswith("__")
+                     and a not in allowlist_gui_seguro}
+        if suspeitos:
+            problemas[mixin] = sorted(suspeitos)
+
+    assert not problemas, (
+        "Mixin(s) de importação usam self.X que só a GUI provê e o headless não tem "
+        "(quebraria na migração, como os bugs de log_lines/_calc_cli_tipo). Mova a "
+        "lógica para o mixin; ou, se for lazy (after-lambda) / hasattr e comprovadamente "
+        "seguro, liste em allowlist_gui_seguro com justificativa. Suspeitos: " + repr(problemas))

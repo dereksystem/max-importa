@@ -1037,25 +1037,36 @@ class FinanceiroImportMixin:
         pend  = set()            # chaves de dedup do lote AINDA não gravado
 
         def flush():
-            """Grava o lote acumulado com executemany (caminho rápido). Se o lote
-            falhar (ex.: uma linha com valor/data inválidos), desfaz e reprocessa
-            linha-a-linha SÓ aquele lote, isolando a(s) ruim(s) sem perder as boas."""
+            """Grava o lote acumulado com executemany (caminho rápido), com retry em
+            erro TRANSIENTE (deadlock/timeout — o lote é atômico, seguro re-tentar).
+            Se falhar por erro de DADOS, desfaz e reprocessa linha-a-linha SÓ aquele
+            lote, isolando a(s) ruim(s) sem perder as boas (cada linha também com retry)."""
             nonlocal sucessos, erros, lote, pend
             if not lote:
                 return
-            try:
+
+            def _bulk():
+                try:
+                    self.conn.rollback()      # estado limpo antes de (re)tentar
+                except Exception:
+                    pass
                 ins.executemany(SQL, [t[0] for t in lote])
                 self.conn.commit()
+
+            try:
+                self._com_retry(_bulk, f"vendaPgto (lote de {len(lote)})")
                 sucessos += len(lote)
-            except Exception:
+            except Exception:                 # não-transiente → isola linha-a-linha
                 try:
                     self.conn.rollback()
                 except Exception:
                     pass
-                for vals, idx, cpf in lote:      # fallback isolado (caminho lento)
-                    try:
+                for vals, idx, cpf in lote:   # fallback isolado (caminho lento)
+                    def _row(vals=vals):
                         ins.execute(SQL, vals)
                         self.conn.commit()
+                    try:
+                        self._com_retry(_row, f"linha {idx+2}")
                         sucessos += 1
                     except Exception as e:
                         try:

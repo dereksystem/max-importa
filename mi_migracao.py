@@ -505,6 +505,57 @@ class MigracaoMixin:
                                  f"preenchimento divergente:")
         return linhas
 
+    # Relações-chave (filha.fk → pai.pk) verificadas contra ÓRFÃOS após a migração.
+    # Uma FK "não-confiável" (is_not_trusted) não valida os dados existentes e o
+    # otimizador a ignora — órfãos passam despercebidos. Este check acha os órfãos
+    # DIRETAMENTE (independe do estado da FK), fechando o risco silencioso.
+    _REL_FK = {
+        "clientes":   [("cliente_empresa", "cliId", "cliente", "cliId"),
+                       ("UsuarioPermissao", "cliId", "cliente", "cliId")],
+        "produtos":   [("produto_empresa", "proId", "produto", "proId")],
+        "codbarras":  [("codBarras", "cdbIdProd", "produto", "proId")],
+        "financeiro": [("vendaPgto", "pgtClienteId", "cliente", "cliId")],
+    }
+
+    def _validar_integridade_fk(self, dest_conn, entidades):
+        """Integridade referencial no destino: (1) FKs que ficaram DESABILITADAS
+        (sem enforcement — a migração não conseguiu reabilitar) e (2) linhas ÓRFÃS
+        (referência apontando para um pai inexistente). Complementa a FK não-confiável,
+        que o SQL Server não valida sozinho."""
+        linhas = []
+        desab = self._fks_desabilitadas(dest_conn)
+        if desab:
+            amostra = ", ".join(f"{fk} em {tbl}" for tbl, fk in desab[:6])
+            linhas.append(f"🔴 {len(desab)} FK(s) DESABILITADA(s) no destino — sem enforcement: "
+                          + amostra + (" ..." if len(desab) > 6 else ""))
+
+        def cnt(sql):
+            try:
+                cur = dest_conn.cursor(); cur.execute(sql)
+                r = cur.fetchone()
+                return r[0] if r else 0
+            except Exception:
+                return None
+
+        checadas = 0
+        for ent in entidades:
+            for filha, fk, pai, pk in self._REL_FK.get(ent, []):
+                if (fk.lower() not in self._cols(dest_conn, filha)
+                        or pk.lower() not in self._cols(dest_conn, pai)):
+                    continue
+                n = cnt(f"SELECT COUNT(*) FROM [{filha}] f WHERE f.[{fk}] IS NOT NULL "
+                        f"AND NOT EXISTS (SELECT 1 FROM [{pai}] p WHERE p.[{pk}] = f.[{fk}])")
+                if n is None:
+                    continue
+                checadas += 1
+                if n > 0:
+                    linhas.append(f"🔴 {filha}.{fk} → {pai}.{pk}: {n} linha(s) ÓRFÃ(s) "
+                                  f"(aponta(m) para {pai} inexistente)")
+        if desab == [] and not any("ÓRFÃ" in l for l in linhas) and checadas:
+            linhas.append(f"✅ integridade referencial: nenhuma FK desabilitada e "
+                          f"nenhum órfão em {checadas} relação(ões)-chave.")
+        return linhas
+
     def _reconciliar(self, orig_conn, dest_conn, entidades, src_emp):
         """Confere ORIGEM × DESTINO após a migração: contagens por tabela e
         somas (estoque, valores do financeiro). Retorna as linhas do comparativo
@@ -606,6 +657,12 @@ class MigracaoMixin:
         if conteudo:
             linhas.append("── VALIDAÇÃO DE CONTEÚDO (preenchimento não-NULL por coluna) ──")
             linhas.extend(conteudo)
+
+        # Integridade referencial (FKs desabilitadas + linhas órfãs)
+        integridade = self._validar_integridade_fk(dest_conn, entidades)
+        if integridade:
+            linhas.append("── INTEGRIDADE REFERENCIAL (FKs e órfãos) ──")
+            linhas.extend(integridade)
 
         return linhas
 

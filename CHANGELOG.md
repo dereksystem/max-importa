@@ -8,6 +8,28 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.11] — 2026-07-13
+
+### Robustez e segurança da migração (integridade, backup, retry, guard-rail)
+- **Integridade referencial pós-migração:** a reconciliação agora detecta **FKs
+  desabilitadas** no destino (sem enforcement) e **linhas órfãs** (referência para
+  um pai inexistente) nas relações-chave (`cliente_empresa→cliente`,
+  `vendaPgto→cliente`, `produto_empresa→produto`, `codBarras→produto`). Pega o risco
+  silencioso da FK "não-confiável" (que o SQL Server não valida sozinho).
+- **Backup obrigatório na migração destrutiva:** como Clientes é a única entidade que
+  APAGA o destino antes de reinserir, o backup passou a ser **marcado e travado** no
+  wizard quando Clientes está no plano — garante um ponto de restauração.
+- **Retry em erro transiente:** deadlock (1205), lock/query timeout (1222/-2), queda de
+  conexão (08S01)… agora **re-tentam** com backoff exponencial em vez de abortar a
+  migração. Erros de dados (PK, truncamento, NULL) NÃO re-tentam — sobem na hora.
+  Aplicado no bulk do Financeiro (lote atômico, seguro re-tentar) e respeita o cancelamento.
+- **Guard-rail estrutural (teste permanente):** uma auditoria AST falha o CI se um mixin
+  de importação usar `self.X` que só a GUI provê e o importador *headless* (migração)
+  não tem — a causa-raiz de 4 bugs recentes (log_lines, _aviso_nao_encontrados,
+  cancelamento, _calc_cli_tipo). Fecha a classe de bug automaticamente.
+
+---
+
 ## [3.6.10] — 2026-07-13
 
 ### Reconciliação — validação de CONTEÚDO por coluna (pega perda silenciosa)

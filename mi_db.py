@@ -13,11 +13,56 @@ etc. (nenhum call-site muda). Depende apenas de `self.mapping` e, opcionalmente,
 `self.FLOAT_NOT_NULL` (via getattr) e `self._lookup_cache`.
 """
 import re
+import time
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 
 class MapeamentoDBMixin:
+    # ── Retry de erros TRANSIENTES do SQL Server ───────────────────────────────
+    # Números/estados que valem re-tentar (deadlock, lock/query timeout, queda de
+    # conexão). Erros de DADOS (violação de PK/FK, truncamento 22001, conversão) NÃO
+    # entram aqui — devem subir na hora, não adianta re-tentar.
+    _ERR_TRANSIENTE_COD = {"1205", "1222", "-2", "10928", "10929", "40001", "40143",
+                           "40197", "40501", "40613", "08s01", "08001", "hyt00", "hyt01"}
+    _ERR_TRANSIENTE_TXT = ("deadlock", "timeout expired", "lock request time",
+                           "communication link failure", "transport-level",
+                           "connection is busy", "server failed to resume")
+
+    def _e_transiente(self, e) -> bool:
+        """True se o erro do SQL Server for transiente (vale re-tentar)."""
+        txt = str(e).lower()
+        estado = ""
+        try:
+            estado = str(e.args[0]).lower()
+        except Exception:
+            pass
+        if estado in self._ERR_TRANSIENTE_COD:
+            return True
+        for cod in re.findall(r"\(\s*(-?\d+)\s*\)", txt):   # ex.: "... (1205)"
+            if cod in self._ERR_TRANSIENTE_COD:
+                return True
+        return any(s in txt for s in self._ERR_TRANSIENTE_TXT)
+
+    def _com_retry(self, op, descr="operação", tentativas=4, base=0.6):
+        """Executa op() com retry exponencial em erro transiente. op() DEVE ser
+        idempotente/segura para repetir (ex.: fazer rollback antes de re-tentar).
+        Erro não-transiente sobe na hora. Respeita o cancelamento (self._cancelado)."""
+        for i in range(tentativas):
+            try:
+                return op()
+            except Exception as e:
+                if (i == tentativas - 1 or not self._e_transiente(e)
+                        or getattr(self, "_cancelado", False)):
+                    raise
+                espera = base * (2 ** i)
+                try:
+                    self._log(f"⏳ {descr}: erro transiente [{str(e)[:80]}] — nova "
+                              f"tentativa em {espera:.1f}s ({i + 2}/{tentativas})")
+                except Exception:
+                    pass
+                time.sleep(espera)
+
     # ── Parsing de células mapeadas ────────────────────────────────────────────
     def _to_decimal(self, value):
         if value is None:
