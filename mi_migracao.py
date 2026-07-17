@@ -605,10 +605,10 @@ class MigracaoMixin:
             imp._dedup_financeiro = True   # idempotência: não duplica se rodar 2×
         self._imp_atual = imp     # a partir daqui o log alimenta o relatorio da entidade
 
+        # Só produtos e financeiro chegam aqui via importador headless. Clientes
+        # (e permissões/codbarras) retornam antes, por cópia direta (ver acima).
         if entidade == "produtos":
             imp._inserir_produtos()
-        elif entidade == "clientes":
-            imp._inserir_clientes()
         else:
             imp._inserir_financeiro()
         self._imp_atual = None

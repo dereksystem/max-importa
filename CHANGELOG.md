@@ -8,6 +8,26 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.8] — 2026-07-13
+
+### Correção preventiva — `_calc_cli_tipo` movido para o mixin (robustez headless)
+- Uma varredura estática (AST) dos mixins de importação procurou a mesma assinatura
+  dos bugs recentes: métodos/atributos que os mixins usam mas que só a **GUI** provê —
+  quebrariam com `AttributeError` no importador *headless* (migração).
+- Achado: **`_calc_cli_tipo`** (deriva `cliTipo` de CPF/CNPJ — 11 díg = PF, 14 = PJ)
+  era definido só na `JanelaClientes`, mas o `ClientesImportMixin` o chama em 4 pontos.
+  `ClientesImportadorHeadless._inserir_clientes()`/`_atualizar_clientes()` quebrariam
+  se rodassem headless. **Dormente hoje** (a migração de clientes usa cópia direta,
+  não o importador), mas era uma mina.
+- Correção: `_calc_cli_tipo` (lógica pura) passou para o `ClientesImportMixin`. Como
+  `JanelaClientes` herda o mixin, a GUI mantém o método por herança; o headless também
+  passa a tê-lo. Removido o código morto `elif entidade == "clientes"` em `_migrar_entidade`
+  (clientes já retornava antes, por cópia direta). Teste de regressão adicionado.
+- Os demais candidatos da varredura são falsos positivos (usos dentro de
+  `after(0, lambda…)`, que no headless nunca executam) ou já corrigidos.
+
+---
+
 ## [3.6.7] — 2026-07-13
 
 ### Correção — botão "Iniciar Migração" sumia no diálogo de opções

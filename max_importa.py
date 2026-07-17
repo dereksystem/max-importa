@@ -1476,21 +1476,9 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
             messagebox.showerror("Erro ao ler arquivo", str(e), parent=self)
 
     # ── Helpers ───────────────────────────────────────────────────────────
-    def _calc_cli_tipo(self, row):
-        """Define cliTipo. Se o campo estiver mapeado e preenchido, usa o valor.
-        Caso contrário, deriva do cliCpfCgc: CPF (11 díg) = 0 (Pessoa Física),
-        CNPJ (14 díg) = 1 (Pessoa Jurídica). Se o CPF/CNPJ estiver vazio (ou com
-        tamanho inesperado), retorna None (deixa vazio/NULL)."""
-        v = self._get_int(row, "cliTipo", None)
-        if v is not None:
-            return v
-        cpf = self._get_str(row, "cliCpfCgc")
-        dig = re.sub(r"\D", "", cpf) if cpf else ""
-        if len(dig) == 14:
-            return 1
-        if len(dig) == 11:
-            return 0
-        return None
+    # _calc_cli_tipo foi movido para ClientesImportMixin (mi_importadores.py) — é
+    # lógica pura e precisa existir também no importador HEADLESS. JanelaClientes
+    # herda ClientesImportMixin, então continua tendo o método por herança.
 
     # ── Iniciar: validação + dispatch ─────────────────────────────────────
     def _tratar_campos_vazios_clientes(self):

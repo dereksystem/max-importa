@@ -18,7 +18,7 @@ import configparser
 from ctypes import wintypes
 
 # ── Versao do aplicativo (MAJOR.MINOR.PATCH) ───────────────────────────────────
-APP_VERSION = "3.6.7"
+APP_VERSION = "3.6.8"
 
 # ── Paleta "Clean Corporate" — tuplas (claro, escuro) ──────────────────────────
 # O CustomTkinter troca a cor conforme o modo (light/dark) automaticamente.

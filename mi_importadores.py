@@ -9,6 +9,7 @@ self.btn_import/btn_acerto e os helpers de MapeamentoDBMixin — tudo provido pe
 Fica na janela o que constrói widgets/lê a tela: __init__, _build, _selecionar_arquivo,
 _carregar_colunas, _iniciar (validação + dispatch), _log, _salvar_relatorio, _fechar.
 """
+import re
 import pandas as pd
 from tkinter import messagebox
 
@@ -488,6 +489,26 @@ class ProdutosImportMixin:
 
 
 class ClientesImportMixin:
+    def _calc_cli_tipo(self, row):
+        """Define cliTipo. Se o campo estiver mapeado e preenchido, usa o valor.
+        Caso contrário, deriva do cliCpfCgc: CPF (11 díg) = 0 (Pessoa Física),
+        CNPJ (14 díg) = 1 (Pessoa Jurídica). Se o CPF/CNPJ estiver vazio (ou com
+        tamanho inesperado), retorna None (deixa vazio/NULL).
+
+        Vive AQUI (no mixin), não na JanelaClientes, para que o importador HEADLESS
+        (migração) também o tenha — é lógica pura (sem GUI). A JanelaClientes herda
+        ClientesImportMixin, então continua tendo o método por herança."""
+        v = self._get_int(row, "cliTipo", None)
+        if v is not None:
+            return v
+        cpf = self._get_str(row, "cliCpfCgc")
+        dig = re.sub(r"\D", "", cpf) if cpf else ""
+        if len(dig) == 14:
+            return 1
+        if len(dig) == 11:
+            return 0
+        return None
+
     def _inserir_clientes(self):
         total    = len(self.df)
         sucessos = 0

@@ -108,6 +108,20 @@ def test_calc_cli_tipo_mapeado_tem_prioridade():
     assert obj._calc_cli_tipo({"t": "1", "doc": "123.456.789-01"}) == 1
 
 
+def test_calc_cli_tipo_no_importador_headless():
+    """Regressão: _calc_cli_tipo vive no ClientesImportMixin (não só na GUI), então
+    o ClientesImportadorHeadless (usado pela migração) também o tem. Antes, ele era
+    definido só na JanelaClientes → _inserir_clientes headless quebraria (mesma
+    assinatura dos bugs de log_lines/_aviso_nao_encontrados)."""
+    from mi_importadores import ClientesImportadorHeadless
+    imp = ClientesImportadorHeadless(log=lambda *a, **k: None)
+    imp.mapping = {"cliCpfCgc": "doc"}                 # cliTipo NÃO mapeado
+    assert hasattr(imp, "_calc_cli_tipo")             # existe no headless (via mixin)
+    assert imp._calc_cli_tipo({"doc": "123.456.789-01"}) == 0     # CPF → PF
+    assert imp._calc_cli_tipo({"doc": "12.345.678/0001-90"}) == 1  # CNPJ → PJ
+    assert imp._calc_cli_tipo({"doc": ""}) is None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DPAPI — cifra/decifra da senha salva
 # ─────────────────────────────────────────────────────────────────────────────
