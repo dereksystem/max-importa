@@ -92,6 +92,37 @@ def test_get_str_max_trunca():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# _get_datetime — parsing de datas (regressão: s[:len(fmt)] truncava e perdia
+# TODAS as datas na migração — pgtData/pgtVecmto iam NULL para o destino).
+# ─────────────────────────────────────────────────────────────────────────────
+from datetime import datetime as _dt
+
+@pytest.mark.parametrize("entrada, esperado", [
+    ("2026-03-01",                 _dt(2026, 3, 1)),               # ISO só data (o que quebrava)
+    ("2026-03-01 12:34:56",        _dt(2026, 3, 1, 12, 34, 56)),   # ISO com hora
+    ("2026-03-01 12:34:56.789000", _dt(2026, 3, 1, 12, 34, 56, 789000)),  # com microssegundos
+    ("2026-03-01T12:34:56",        _dt(2026, 3, 1, 12, 34, 56)),   # ISO com 'T'
+    ("01/03/2026",                 _dt(2026, 3, 1)),               # BR só data
+    ("01/03/2026 12:34:56",        _dt(2026, 3, 1, 12, 34, 56)),   # BR com hora
+    (_dt(2026, 3, 1, 12, 34, 56),  _dt(2026, 3, 1, 12, 34, 56)),   # já é datetime (migração)
+    ("",                            None),
+    ("NULL",                        None),
+    ("lixo",                        None),
+    (None,                          None),
+])
+def test_get_datetime(entrada, esperado):
+    obj = _fake(m.JanelaFinanceiro, {"pgtData": "col"})
+    assert obj._get_datetime({"col": entrada}, "pgtData") == esperado
+
+
+def test_get_datetime_pandas_timestamp_e_nat():
+    """Timestamp do pandas (subclasse de datetime) vem da migração; NaT -> NULL."""
+    obj = _fake(m.JanelaFinanceiro, {"pgtData": "col"})
+    assert obj._get_datetime({"col": pd.Timestamp("2026-03-01 08:00:00")}, "pgtData") == _dt(2026, 3, 1, 8)
+    assert obj._get_datetime({"col": pd.NaT}, "pgtData") is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # _calc_cli_tipo — deriva cliTipo (0=PF, 1=PJ) do CPF/CNPJ
 # ─────────────────────────────────────────────────────────────────────────────
 def test_calc_cli_tipo_deriva_cpf_cnpj():

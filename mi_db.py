@@ -103,13 +103,27 @@ class MapeamentoDBMixin:
         val = row.get(col)
         if val is None:
             return None
+        # Já é datetime/Timestamp (caso da MIGRAÇÃO: a data vem do banco como objeto,
+        # não como texto). Usa direto — sem passar por str()/parse. NaT (pandas) não é
+        # igual a si mesmo -> vira NULL. Remove timezone (SQL Server 'datetime' não tem).
+        if isinstance(val, datetime):
+            if val != val:                 # NaT/NaN
+                return None
+            return val.replace(tzinfo=None) if val.tzinfo else val
         s = str(val).strip()
-        if s.upper() in ("", "NULL", "NONE", "NAN"):
+        if s.upper() in ("", "NULL", "NONE", "NAN", "NAT"):
             return None
-        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%d", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
+        # ISO 8601 primeiro (aceita "2026-03-01" e "2026-03-01 12:34:56[.ffffff]").
+        try:
+            return datetime.fromisoformat(s.replace("T", " "))
+        except Exception:
+            pass
+        # Formatos BR/US. IMPORTANTE: parse na STRING INTEIRA — NÃO usar s[:len(fmt)]:
+        # len("%Y-%m-%d")==8 mas a data tem 10 chars, o que truncava e falhava sempre.
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
+                    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
             try:
-                return datetime.strptime(s[:len(fmt)], fmt)
+                return datetime.strptime(s, fmt)
             except Exception:
                 continue
         return None
