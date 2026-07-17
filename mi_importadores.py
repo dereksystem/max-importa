@@ -1161,6 +1161,15 @@ class FinanceiroImportMixin:
                   f"| ⏭️ {duplicados} já existentes (dup) "
                   f"| ⚠️ {nao_enc} CPF/CNPJ nao encontrados "
                   f"| ❌ {erros} erros")
+        # Alerta agregado de datas não reconhecidas (gravadas como NULL). Sem isto,
+        # uma data em formato inesperado sumia em silêncio (classe do bug 3.6.9).
+        di = getattr(self, "_datas_invalidas", None)
+        if di:
+            tot = sum(di.values())
+            det = ", ".join(f"{k}={v}" for k, v in di.items())
+            self._log(f"⚠️  ATENÇÃO: {tot} valor(es) de data NÃO reconhecido(s) e "
+                      f"gravado(s) como NULL ({det}). Verifique o formato das datas "
+                      f"no arquivo (ex.: dd/mm/aaaa, aaaa-mm-dd).")
         self._ultimo_resultado = {"inseridos": sucessos,
                                   "pulados": nao_enc + duplicados, "erros": erros}
 

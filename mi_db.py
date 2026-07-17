@@ -14,7 +14,7 @@ etc. (nenhum call-site muda). Depende apenas de `self.mapping` e, opcionalmente,
 """
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 
@@ -158,20 +158,75 @@ class MapeamentoDBMixin:
         s = str(val).strip()
         if s.upper() in ("", "NULL", "NONE", "NAN", "NAT"):
             return None
+        dt = self._parse_data_str(s)
+        if dt is None:
+            # NÃO devolve None em silêncio (foi o que escondeu o bug 3.6.9 por meses):
+            # registra e loga uma amostra para o valor não reconhecido aparecer no LOG.
+            self._registrar_data_invalida(campo, s)
+        return dt
+
+    # Formatos aceitos, em ordem de prioridade. IMPORTANTE: parse na STRING INTEIRA
+    # (o bug 3.6.9 era s[:len(fmt)] — len("%Y-%m-%d")==8, mas a data tem 10 chars).
+    # BR (dia primeiro) tem prioridade sobre US: este é um ERP brasileiro, então
+    # "05/06/2026" é 05/jun. Ano com 2 dígitos vem por último p/ o de 4 dígitos vencer.
+    _FMT_DATA = (
+        # ISO com separador '/'
+        "%Y/%m/%d %H:%M:%S.%f", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d",
+        # ISO com separador '-' (além do fromisoformat, cobre casos sem 'T')
+        "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+        # BR barra
+        "%d/%m/%Y %H:%M:%S.%f", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y",
+        # BR traço
+        "%d-%m-%Y %H:%M:%S.%f", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%Y",
+        # BR ponto
+        "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y",
+        # US barra (fallback: só casa quando o BR falha, ex.: mês > 12 no 1º campo)
+        "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
+        # ano com 2 dígitos (por último)
+        "%d/%m/%y %H:%M:%S", "%d/%m/%y %H:%M", "%d/%m/%y",
+        "%d-%m-%y", "%d.%m.%y",
+    )
+
+    def _parse_data_str(self, s):
+        """Converte texto -> datetime tentando muitos formatos (ISO, BR, US, serial
+        Excel). Retorna None só quando NADA reconhece — o chamador então registra o
+        valor para não somir em silêncio."""
         # ISO 8601 primeiro (aceita "2026-03-01" e "2026-03-01 12:34:56[.ffffff]").
         try:
             return datetime.fromisoformat(s.replace("T", " "))
         except Exception:
             pass
-        # Formatos BR/US. IMPORTANTE: parse na STRING INTEIRA — NÃO usar s[:len(fmt)]:
-        # len("%Y-%m-%d")==8 mas a data tem 10 chars, o que truncava e falhava sempre.
-        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
-                    "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        for fmt in self._FMT_DATA:
             try:
                 return datetime.strptime(s, fmt)
             except Exception:
                 continue
+        # Serial do Excel (dias desde 1899-12-30): só dígitos, faixa plausível de
+        # datas (~1954..2119) p/ não confundir com um número qualquer.
+        try:
+            if s.isdigit():
+                n = int(s)
+                if 20000 <= n <= 80000:
+                    return datetime(1899, 12, 30) + timedelta(days=n)
+        except Exception:
+            pass
         return None
+
+    def _registrar_data_invalida(self, campo, valor):
+        """Contabiliza um valor de data não reconhecido (gravado como NULL) e loga
+        uma amostra. Torna VISÍVEL o que antes era um None silencioso."""
+        cont = getattr(self, "_datas_invalidas", None)
+        if cont is None:
+            cont = self._datas_invalidas = {}
+        cont[campo] = cont.get(campo, 0) + 1
+        log = getattr(self, "_log", None)
+        n = cont[campo]
+        if callable(log) and (n <= 5 or n % 500 == 0):
+            try:                       # logar NUNCA pode abortar a importação
+                log(f"⚠️  Data não reconhecida em '{campo}': '{str(valor)[:40]}' — "
+                    f"gravada como NULL (amostra; {n} até agora). Confira o formato no arquivo.")
+            except Exception:
+                pass
 
     # ── Utilidades de banco (recebem cursor) ───────────────────────────────────
     def _lookup(self, cursor, tabela, id_col, nome_col, valor):

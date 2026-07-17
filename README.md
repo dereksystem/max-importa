@@ -6,7 +6,7 @@ Aplicação desktop em Python (customtkinter + pyodbc + pandas) que importa gran
 volumes de dados para o banco SQL Server do MaxManager a partir de arquivos
 `.txt`/`.csv`, e migra dados diretamente **entre dois bancos MaxData** (banco → banco).
 
-- **Versão atual:** `3.6.11` (definida em [`mi_config.py`](mi_config.py) → `APP_VERSION`)
+- **Versão atual:** `3.6.12` (definida em [`mi_config.py`](mi_config.py) → `APP_VERSION`)
 - **Plataforma:** Windows 10/11 (64 bits)
 - **Banco:** SQL Server (ODBC Driver 17)
 

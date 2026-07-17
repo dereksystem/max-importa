@@ -105,14 +105,37 @@ from datetime import datetime as _dt
     ("01/03/2026",                 _dt(2026, 3, 1)),               # BR só data
     ("01/03/2026 12:34:56",        _dt(2026, 3, 1, 12, 34, 56)),   # BR com hora
     (_dt(2026, 3, 1, 12, 34, 56),  _dt(2026, 3, 1, 12, 34, 56)),   # já é datetime (migração)
+    # Formatos que antes iam NULL em silêncio (correção pós-3.6.11):
+    ("01-03-2026",                 _dt(2026, 3, 1)),               # BR traço
+    ("01-03-2026 12:34:56",        _dt(2026, 3, 1, 12, 34, 56)),   # BR traço com hora
+    ("01.03.2026",                 _dt(2026, 3, 1)),               # BR ponto
+    ("2026/03/01",                 _dt(2026, 3, 1)),               # ISO barra
+    ("2026/03/01 12:34:56",        _dt(2026, 3, 1, 12, 34, 56)),   # ISO barra com hora
+    ("01/03/26",                   _dt(2026, 3, 1)),               # ano 2 dígitos
+    ("12/25/2026",                 _dt(2026, 12, 25)),             # US (mês>12 no 1º campo)
+    ("46082",                      _dt(2026, 3, 1)),               # serial Excel
     ("",                            None),
     ("NULL",                        None),
     ("lixo",                        None),
+    ("99/99/9999",                  None),                         # data impossível → NULL
     (None,                          None),
 ])
 def test_get_datetime(entrada, esperado):
     obj = _fake(m.JanelaFinanceiro, {"pgtData": "col"})
     assert obj._get_datetime({"col": entrada}, "pgtData") == esperado
+
+
+def test_get_datetime_registra_invalida_nao_silenciosa():
+    """Valor não-vazio que não converte deve ser CONTABILIZADO (não sumir calado)."""
+    obj = _fake(m.JanelaFinanceiro, {"pgtData": "col"})
+    logs = []
+    obj._log = lambda msg: logs.append(msg)
+    assert obj._get_datetime({"col": "31/31/2026"}, "pgtData") is None
+    assert obj._datas_invalidas.get("pgtData") == 1     # foi registrado
+    assert logs and "NULL" in logs[0]                    # e apareceu no log
+    # Valor vazio/NULL NÃO conta como data inválida (é ausência legítima):
+    obj._get_datetime({"col": ""}, "pgtData")
+    assert obj._datas_invalidas.get("pgtData") == 1
 
 
 def test_get_datetime_pandas_timestamp_e_nat():

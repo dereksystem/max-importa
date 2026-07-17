@@ -9,6 +9,7 @@ mapping — com stubs para as chamadas de interface (_log, after, progress, etc.
 """
 import types
 import uuid
+from datetime import datetime
 
 import pandas as pd
 import pytest
@@ -256,9 +257,11 @@ def test_import_financeiro_lookup_cliente(db_conn):
     campos = ["cliCpfCgc", "pgtCliNome", "pgtValor", "pgtData", "pgtVecmto",
               "pgtTipoConta", "pgtPago", "pgtTipoVista"]
     mapping = {c: c for c in campos}
+    # pgtData em formato BR-traço (04-07-2026) exercita, ponta-a-ponta, os formatos
+    # que antes iam NULL em silêncio; pgtVecmto em ISO. Ambos DEVEM chegar ao banco.
     df = pd.DataFrame([
         {"cliCpfCgc": cpf_ok, "pgtCliNome": f"CLIENTE {tag} FIN", "pgtValor": "150,75",
-         "pgtData": "2026-07-04", "pgtVecmto": "2026-08-04", "pgtTipoConta": "R",
+         "pgtData": "04-07-2026", "pgtVecmto": "2026-08-04", "pgtTipoConta": "R",
          "pgtPago": "N", "pgtTipoVista": "1"},
         {"cliCpfCgc": "00000000000000", "pgtCliNome": "INEXISTENTE", "pgtValor": "10",
          "pgtData": "2026-07-04", "pgtVecmto": "2026-08-04", "pgtTipoConta": "R",
@@ -272,10 +275,14 @@ def test_import_financeiro_lookup_cliente(db_conn):
 
     cur = db_conn.cursor()
     row = cur.execute(
-        "SELECT pgtClienteId, pgtValor FROM vendaPgto WHERE pgtClienteId = ?", cli_id).fetchone()
+        "SELECT pgtClienteId, pgtValor, pgtData, pgtVecmto FROM vendaPgto "
+        "WHERE pgtClienteId = ?", cli_id).fetchone()
     assert row is not None
     assert row[0] == cli_id
     assert float(row[1]) == pytest.approx(150.75)
+    # As datas NÃO podem chegar NULL (regressão do bug 3.6.9 + formatos ampliados):
+    assert row[2] is not None and row[2].date() == datetime(2026, 7, 4).date()
+    assert row[3] is not None and row[3].date() == datetime(2026, 8, 4).date()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

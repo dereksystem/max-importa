@@ -652,6 +652,27 @@ ROBUSTEZ E SEGURANCA DA MIGRACAO
   cancelamento, _calc_cli_tipo). Fecha a classe de bug.
 
 --------------------------------------------------------
+ [3.6.12] - 2026-07-17
+--------------------------------------------------------
+DATAS - MAIS FORMATOS E FIM DO DESCARTE SILENCIOSO
+- _get_datetime reconhece muito mais formatos alem do ISO
+  (aaaa-mm-dd) e barra BR (dd/mm/aaaa) que ja funcionavam:
+  traco BR (dd-mm-aaaa), ponto (dd.mm.aaaa), ISO com barra
+  (aaaa/mm/dd), US (mm/dd/aaaa, so como fallback), ano com 2
+  digitos e serial do Excel (~1954-2119). BR tem prioridade
+  sobre US; formato de 4 digitos vence o de 2.
+- Fim do None silencioso: valor de data NAO-vazio que nao
+  converte agora e contabilizado e logado (amostra no LOG +
+  alerta agregado no fim do Financeiro). Era a mesma classe do
+  bug 3.6.9. A chamada de log e blindada (nao aborta o import).
+- Teste de integracao do Financeiro passou a CONFERIR
+  pgtData/pgtVecmto no banco (formato BR-traco); +10 casos no
+  teste unitario de _get_datetime.
+- Nota de diagnostico: "datas nao aparecem" com import novo OK
+  geralmente sao lancamentos legados (pre-3.6.9) ja com data
+  NULL no banco - precisam ser refeitos da origem.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

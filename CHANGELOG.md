@@ -8,6 +8,29 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.6.12] — 2026-07-17
+
+### Datas — mais formatos aceitos e fim do descarte silencioso
+- `_get_datetime` passou a reconhecer **muito mais formatos** de data no arquivo,
+  além do ISO (`aaaa-mm-dd`) e barra BR (`dd/mm/aaaa`) que já funcionavam:
+  traço BR (`dd-mm-aaaa`), ponto (`dd.mm.aaaa`), ISO com barra (`aaaa/mm/dd`),
+  US (`mm/dd/aaaa`, só como fallback quando o BR não casa), ano com 2 dígitos e
+  **serial do Excel** (nº de dias, faixa ~1954–2119). BR tem prioridade sobre US
+  (ERP brasileiro), e formato de 4 dígitos vence o de 2.
+- **Fim do `None` silencioso:** quando um valor de data **não-vazio** não é
+  reconhecido, agora é **contabilizado e logado** (amostra no LOG + alerta agregado
+  no fim do Financeiro: *"N valor(es) de data NÃO reconhecido(s)… gravado(s) como
+  NULL"*). Era a mesma classe do bug 3.6.9 — data em formato inesperado sumia sem
+  deixar rastro. A chamada de log é blindada (nunca aborta a importação).
+- **Cobertura de teste:** o teste de integração do Financeiro agora **confere
+  `pgtData`/`pgtVecmto` no banco** (com data em formato BR-traço), fechando a lacuna
+  que deixou o bug de datas passar. +10 casos no teste unitário de `_get_datetime`.
+- Diagnóstico associado: quando "as datas não aparecem" mas a importação nova está
+  correta, geralmente são **lançamentos legados** (pré-3.6.9) com data já NULL no
+  banco — precisam ser refeitos da origem, não é o importador atual.
+
+---
+
 ## [3.6.11] — 2026-07-13
 
 ### Robustez e segurança da migração (integridade, backup, retry, guard-rail)
