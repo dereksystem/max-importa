@@ -40,3 +40,6 @@ Thumbs.db
 Desktop.ini
 .vscode/
 .idea/
+
+# Arquivos temporarios/lock do Excel (criados enquanto a planilha esta aberta)
+~$*
