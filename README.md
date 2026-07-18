@@ -6,7 +6,7 @@ Aplicação desktop em Python (customtkinter + pyodbc + pandas) que importa gran
 volumes de dados para o banco SQL Server do MaxManager a partir de arquivos
 `.txt`/`.csv`, e migra dados diretamente **entre dois bancos MaxData** (banco → banco).
 
-- **Versão atual:** `3.6.12` (definida em [`mi_config.py`](mi_config.py) → `APP_VERSION`)
+- **Versão atual:** `3.7.0` (definida em [`mi_config.py`](mi_config.py) → `APP_VERSION`)
 - **Plataforma:** Windows 10/11 (64 bits)
 - **Banco:** SQL Server (ODBC Driver 17)
 
@@ -55,7 +55,7 @@ Detalhes: [docs/BUILD.md](docs/BUILD.md)
 1. Abra o `Max_Importa.exe`
 2. **Login:** em *Editar credenciais*, escolha a autenticação — **SQL Server** (usuário/senha) ou **Windows** (integrada, sem senha) — conecte e escolha o banco. A senha **não** vem embutida; marque *"Lembrar credenciais"* para salvá-la **criptografada** (DPAPI, só nesta máquina/usuário)
 3. **Menu:** escolha o módulo (Clientes, Produtos, Financeiro ou Migração)
-4. **Importação por arquivo:** selecione o `.txt`/`.csv`, confira o mapeamento de colunas e clique em Importar
+4. **Importação por arquivo:** selecione o `.xlsx`/`.txt`/`.csv` (o encoding é detectado automaticamente), confira o mapeamento de colunas e clique em Importar. No Financeiro há a opção **"🔎 Simular (não grava)"** para conferir o resultado antes de gravar
 5. **Migração:** escolha banco de origem e destino, marque o que migrar e inicie
 
 Modelos de arquivo: `MaxImporta_Modelos_Importacao.xlsx` e os `modelo de importação_*.txt`.

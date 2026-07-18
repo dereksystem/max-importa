@@ -24,9 +24,12 @@ a = Analysis(
         'mi_migracao',      # módulo próprio (mixin da lógica de migração)
         'mi_importadores',  # módulo próprio (mixins de importação por entidade)
         'mi_validacao',     # módulo próprio (regras de validação puras)
+        'mi_arquivo',       # módulo próprio (leitura xlsx/csv + autodetecção encoding)
         'customtkinter',
         'pyodbc',
         'pandas',
+        'openpyxl',         # engine de leitura de .xlsx (pd.read_excel)
+        'openpyxl.cell._writer',  # submódulo que o PyInstaller às vezes não pega sozinho
         'PIL',
         'PIL.Image',
         'PIL.ImageTk',

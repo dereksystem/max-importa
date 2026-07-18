@@ -8,6 +8,36 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [3.7.0] — 2026-07-17
+
+### Importação por arquivo: Excel, encoding automático e simulação (dry-run)
+Novo módulo `mi_arquivo.py` centraliza a leitura de arquivos (antes duplicada nos
+três `_carregar_colunas`) e traz três recursos:
+- **Importar `.xlsx`/`.xlsm` direto** (via openpyxl), além de `.txt`/`.csv` — sem
+  precisar exportar a planilha para texto antes. O diálogo das 3 telas (Produtos,
+  Clientes, Financeiro) já aceita Excel.
+- **Autodetecção de encoding** — no lugar do `latin1` fixo (que corrompia acentos de
+  arquivos utf-8/cp1252). Estratégia determinística p/ o domínio PT-BR: BOM
+  (utf-8-sig/utf-16) → utf-8 estrito (auto-validável) → fallback cp1252. Evita de
+  propósito o detector estatístico (charset-normalizer), que erra o code page em
+  amostras curtas e corromperia justamente os acentos.
+- **Dry-run (simulação) no Financeiro** — checkbox "🔎 Simular (não grava)": percorre
+  lookup + parse + validações e reporta o que ACONTECERIA (seriam inseridos, CPFs não
+  encontrados, datas não reconhecidas) **sem gravar nada**. Não renomeia nem reseta o
+  arquivo. Escolhida simulação sem-escrita (não rollback) porque os INSERTs de
+  Produtos/Clientes usam `DBCC CHECKIDENT`/`IDENTITY_INSERT`, que não são
+  transacionais — um rollback deixaria efeito colateral.
+
+### Testes
+- `tests/test_arquivo.py` (13 casos): separador, encoding (BOM/utf-8/cp1252), leitura
+  de `.xlsx`/`.csv`/`.txt` com acento.
+- `test_import_financeiro_dry_run_nao_grava`: confirma **0 gravações** na simulação.
+- `test_migracao_financeiro_via_headless` tornou-se determinístico (zera o destino
+  descartável antes de migrar, em vez de depender do estado do BD_ZERO).
+- Build: `openpyxl` (+ `mi_arquivo`) adicionados ao `.spec`.
+
+---
+
 ## [3.6.12] — 2026-07-17
 
 ### Datas — mais formatos aceitos e fim do descarte silencioso

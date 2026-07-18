@@ -177,16 +177,19 @@ def _pos_importacao(win, prefixo: str, nomes_erro: list, houve_erros: bool) -> N
        1) gera TXT com os nomes que deram erro (se houver);
        2) exporta o resultado estruturado em JSON/CSV (alem do .txt);
        3) renomeia o arquivo importado com status + data/hora;
-       4) reseta a selecao na tela (evita duplicidade de importacao)."""
+       4) reseta a selecao na tela (evita duplicidade de importacao).
+    Em DRY-RUN (win._dry_run), pula (3) e (4): o arquivo NAO foi importado, entao
+    nao deve ser marcado nem des-selecionado — o usuario re-roda como importacao real."""
     if nomes_erro:
         ep = _gerar_arquivo_erros(prefixo, nomes_erro)
         if ep:
             win._log(f"📄 Arquivo de erros gerado: {ep}")
     _exportar_resultado(win, prefixo, nomes_erro)
-    novo = _marcar_arquivo_importado(getattr(win, "csv_path", None), houve_erros)
-    if novo:
-        win._log(f"📦 Arquivo importado renomeado para: {os.path.basename(novo)}")
-    win.after(0, lambda: _resetar_selecao(win))
+    if not getattr(win, "_dry_run", False):
+        novo = _marcar_arquivo_importado(getattr(win, "csv_path", None), houve_erros)
+        if novo:
+            win._log(f"📦 Arquivo importado renomeado para: {os.path.basename(novo)}")
+        win.after(0, lambda: _resetar_selecao(win))
     # Desabilita o botão Cancelar ao encerrar a importação
     fin = getattr(win, "_op_finalizada", None)
     if fin:

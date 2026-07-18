@@ -673,6 +673,27 @@ DATAS - MAIS FORMATOS E FIM DO DESCARTE SILENCIOSO
   NULL no banco - precisam ser refeitos da origem.
 
 --------------------------------------------------------
+ [3.7.0] - 2026-07-17
+--------------------------------------------------------
+IMPORTACAO POR ARQUIVO: EXCEL, ENCODING AUTO E DRY-RUN
+Novo modulo mi_arquivo.py centraliza a leitura (antes duplicada
+nos 3 _carregar_colunas) e traz:
+- Importar .xlsx/.xlsm direto (openpyxl), alem de .txt/.csv -
+  sem exportar a planilha para texto antes. As 3 telas aceitam.
+- Autodeteccao de encoding no lugar do latin1 fixo (que
+  corrompia acentos de arquivos utf-8/cp1252). Estrategia: BOM
+  (utf-8-sig/utf-16) -> utf-8 estrito -> fallback cp1252.
+  Evita de proposito o charset-normalizer (erra code page em
+  amostra curta e corromperia os acentos).
+- Dry-run no Financeiro: checkbox "Simular (nao grava)". Percorre
+  lookup + parse + validacoes e reporta o que ACONTECERIA sem
+  gravar nada. Simulacao sem-escrita (nao rollback) porque os
+  INSERTs de Produtos/Clientes usam DBCC CHECKIDENT/IDENTITY_INSERT
+  (nao-transacionais).
+Testes: tests/test_arquivo.py (13), dry-run confirma 0 gravacoes,
+migracao financeiro tornou-se deterministica. openpyxl no .spec.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

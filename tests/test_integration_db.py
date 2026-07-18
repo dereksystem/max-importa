@@ -93,6 +93,16 @@ def _harness_migracao(origem_db):
     return obj
 
 
+def _zerar_auditoria(conn):
+    """Esvazia MaxImporta_Auditoria no destino (se existir). O BD_ZERO pode já conter
+    linhas de auditoria de migrações reais anteriores — que a cópia de teste herda e o
+    revert de snapshot não limpa — então os testes que CONTAM auditoria as zeram antes."""
+    cur = conn.cursor()
+    if cur.execute("SELECT OBJECT_ID('dbo.MaxImporta_Auditoria')").fetchone()[0] is not None:
+        cur.execute("DELETE FROM MaxImporta_Auditoria")
+        conn.commit()
+
+
 def _ncm_existente(cur):
     row = cur.execute(
         "SELECT TOP 1 ncmCodigoNCM FROM proNCM "
@@ -285,6 +295,42 @@ def test_import_financeiro_lookup_cliente(db_conn):
     assert row[3] is not None and row[3].date() == datetime(2026, 8, 4).date()
 
 
+def test_import_financeiro_dry_run_nao_grava(db_conn):
+    """DRY-RUN: a simulação NÃO pode inserir nenhuma linha em vendaPgto, mas ainda
+    reporta quantas SERIAM inseridas e quais CPFs não seriam encontrados."""
+    cur = db_conn.cursor()
+    antes = cur.execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
+
+    tag = uuid.uuid4().hex[:8].upper()
+    cpf_ok = "99888777000199"
+    map_cli = {c: c for c in _linha_cliente(tag, "DRY", cpf_ok).keys()}
+    obj_cli = _harness_clientes(db_conn, pd.DataFrame([_linha_cliente(tag, "DRY", cpf_ok)]), map_cli)
+    obj_cli._inserir_clientes()
+
+    campos = ["cliCpfCgc", "pgtCliNome", "pgtValor", "pgtData", "pgtVecmto",
+              "pgtTipoConta", "pgtPago", "pgtTipoVista"]
+    mapping = {c: c for c in campos}
+    df = pd.DataFrame([
+        {"cliCpfCgc": cpf_ok, "pgtCliNome": f"DRY {tag}", "pgtValor": "99,90",
+         "pgtData": "10/01/2026", "pgtVecmto": "10/02/2026", "pgtTipoConta": "R",
+         "pgtPago": "N", "pgtTipoVista": "1"},
+        {"cliCpfCgc": "00000000000000", "pgtCliNome": "INEXISTENTE", "pgtValor": "1",
+         "pgtData": "10/01/2026", "pgtVecmto": "10/02/2026", "pgtTipoConta": "R",
+         "pgtPago": "N", "pgtTipoVista": "1"},
+    ])
+    obj = _harness_financeiro(db_conn, df, mapping)
+    obj._dry_run = True                       # liga a SIMULAÇÃO
+    obj._inserir_financeiro()
+
+    # Contagem em vendaPgto é EXATAMENTE a de antes — nada foi gravado.
+    depois = cur.execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
+    assert depois == antes, "dry-run NÃO pode inserir linhas em vendaPgto"
+    # Mas o relatório reflete o que SERIA feito.
+    assert obj._ultimo_resultado["simulacao"] is True
+    assert obj._ultimo_resultado["inseridos"] == 1        # 1 seria inserido
+    assert len(obj.nao_encontrados) == 1                  # 1 CPF não encontrado
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MIGRAÇÃO banco→banco (rotinas próprias, sem a janela importadora)
 # Origem = BD_ZERO (modelo, só leitura); Destino = BD_ZERO_TEST (descartável).
@@ -325,6 +371,7 @@ def test_migracao_clientes_banco_zero(orig_conn, db_conn):
 def test_auditoria_registra_no_destino(db_conn):
     """A migração grava, no destino, uma linha por entidade na tabela de
     auditoria (auto-criada), com contagens, origem/destino e usuário."""
+    _zerar_auditoria(db_conn)      # BD_ZERO pode carregar auditoria de execuções reais
     mig = _harness_migracao(SRC_DB)
     mig._cancelado = False
     mig._totais = {
@@ -386,18 +433,18 @@ def test_migracao_produtos_via_headless(orig_conn, db_conn):
 
 def test_migracao_financeiro_via_headless(orig_conn, db_conn):
     """Financeiro ponta-a-ponta via headless: lê a origem, localiza o cliente por
-    CPF/CNPJ no destino e insere. (O dedup é value-based p/ RE-execução da migração;
-    contra os lançamentos que o Manager criou com precisão total de datetime ele não
-    casa, então aqui os 417 são inseridos — comportamento esperado.) Confere que
-    inseriu exatamente 'inseridos' linhas, sem erro, via o importador headless."""
+    CPF/CNPJ no destino e insere. Para ser DETERMINÍSTICO (o dedup é value-based e
+    casaria os lançamentos já presentes no destino, que é cópia da origem), ZERA o
+    vendaPgto do destino descartável antes de migrar — assim há o que reinserir
+    independentemente do conteúdo do BD_ZERO. Confere inserção via o headless."""
     from mi_importadores import FinanceiroImportadorHeadless
     src_emp = (orig_conn.cursor().execute("SELECT TOP 1 cofId FROM config").fetchone() or [1])[0]
-    # Se a origem (BD_ZERO) não tiver lançamentos, não há o que migrar: a migração
-    # nem cria o importador headless. Pula em vez de falhar (BD_ZERO pode estar zerado).
     vp_origem = orig_conn.cursor().execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
     if vp_origem == 0:
         pytest.skip("BD_ZERO sem lançamentos em vendaPgto — nada a migrar neste teste")
-    vp_antes = db_conn.cursor().execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
+    # Destino zerado (é o BD_ZERO_TEST, revertido por snapshot ao fim do teste).
+    db_conn.cursor().execute("DELETE FROM vendaPgto")
+    db_conn.commit()
 
     mig = _harness_migracao(SRC_DB)
     mig._migrar_entidade("financeiro", orig_conn, db_conn, src_emp)
@@ -407,7 +454,7 @@ def test_migracao_financeiro_via_headless(orig_conn, db_conn):
     assert isinstance(mig._imp["financeiro"], FinanceiroImportadorHeadless)
     assert res["inseridos"] > 0                # migrou de verdade via headless
     vp_depois = db_conn.cursor().execute("SELECT COUNT(*) FROM vendaPgto").fetchone()[0]
-    assert vp_depois == vp_antes + res["inseridos"]   # inseriu exatamente os migrados
+    assert vp_depois == res["inseridos"]       # destino começou vazio → total = inseridos
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -427,6 +474,7 @@ def test_migrar_orquestrador_ponta_a_ponta(orig_conn, db_conn):
     mig._salvar_relatorio_migracao = lambda: None   # sem escrever relatório/JSON
     mig.log_lines = []
 
+    _zerar_auditoria(db_conn)      # independe de auditoria herdada do BD_ZERO
     # 'permissoes' entra automaticamente porque 'clientes' está no plano
     mig._migrar(SRC_DB, "BD_ZERO_TEST", ["clientes", "produtos", "codbarras", "financeiro"])
 

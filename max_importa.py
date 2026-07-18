@@ -10,6 +10,8 @@ import sys
 import re
 from PIL import Image as PILImage
 
+import mi_arquivo   # leitura resiliente de arquivos (xlsx + autodetecção de encoding)
+
 # ── Config, cores, cripto e credenciais (extraídos para mi_config.py) ──────────
 from mi_config import (
     APP_VERSION,
@@ -1011,7 +1013,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
     def _selecionar_arquivo(self):
         path = filedialog.askopenfilename(
             parent=self,
-            filetypes=[("CSV / TXT", "*.csv *.txt"), ("Todos", "*.*")]
+            filetypes=mi_arquivo.FILETYPES
         )
         if not path:
             return
@@ -1021,13 +1023,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
 
     def _carregar_colunas(self):
         try:
-            with open(self.csv_path, 'r', encoding='latin1') as f:
-                primeira = f.readline().strip()
-            # detecta separador
-            sep = '\t' if '\t' in primeira else (';' if ';' in primeira else ',')
-            self.df = pd.read_csv(self.csv_path, sep=sep, encoding='latin1',
-                                   dtype=str, on_bad_lines='warn')
-            self.df.columns = [c.strip() for c in self.df.columns]
+            self.df, _ = mi_arquivo.ler_arquivo_tabular(self.csv_path, log=self._log)
             cols = ["[ ignorar ]"] + list(self.df.columns)
 
             # Atualiza todos os comboboxes via referência direta
@@ -1429,7 +1425,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
     def _selecionar_arquivo(self):
         path = filedialog.askopenfilename(
             parent=self,
-            filetypes=[("CSV / TXT", "*.csv *.txt"), ("Todos", "*.*")]
+            filetypes=mi_arquivo.FILETYPES
         )
         if not path:
             return
@@ -1439,12 +1435,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
 
     def _carregar_colunas(self):
         try:
-            with open(self.csv_path, "r", encoding="latin1") as f:
-                primeira = f.readline().strip()
-            sep = "\t" if "\t" in primeira else (";" if ";" in primeira else ",")
-            self.df = pd.read_csv(self.csv_path, sep=sep, encoding="latin1",
-                                   dtype=str, on_bad_lines="warn")
-            self.df.columns = [c.strip() for c in self.df.columns]
+            self.df, _ = mi_arquivo.ler_arquivo_tabular(self.csv_path, log=self._log)
             cols = ["[ ignorar ]"] + list(self.df.columns)
             for campo, var in self.mapping_vars.items():
                 for w in self.scroll_map.winfo_children():
@@ -1944,6 +1935,11 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         ctk.CTkButton(bot, text="↩  Voltar ao Menu", height=52,
                        fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
                        command=self._fechar).pack(side="left")
+        # Dry-run: simula a importação (lookup + parse + validações) SEM gravar nada.
+        self.simular_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(bot, text="🔎 Simular (não grava)", variable=self.simular_var,
+                        font=ctk.CTkFont(size=12),
+                        onvalue=True, offvalue=False).pack(side="left", padx=(16, 0))
 
         self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
         self.progress.pack(padx=24, pady=(4, 0), fill="x")
@@ -1963,7 +1959,7 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
     def _selecionar_arquivo(self):
         path = filedialog.askopenfilename(
             parent=self,
-            filetypes=[("CSV / TXT", "*.csv *.txt"), ("Todos", "*.*")]
+            filetypes=mi_arquivo.FILETYPES
         )
         if not path:
             return
@@ -1973,12 +1969,7 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
 
     def _carregar_colunas(self):
         try:
-            with open(self.csv_path, "r", encoding="latin1") as f:
-                primeira = f.readline().strip()
-            sep = "\t" if "\t" in primeira else (";" if ";" in primeira else ",")
-            self.df = pd.read_csv(self.csv_path, sep=sep, encoding="latin1",
-                                   dtype=str, on_bad_lines="warn")
-            self.df.columns = [c.strip() for c in self.df.columns]
+            self.df, _ = mi_arquivo.ler_arquivo_tabular(self.csv_path, log=self._log)
             cols = ["[ ignorar ]"] + list(self.df.columns)
             for campo, var in self.mapping_vars.items():
                 for w in self._iter_comboboxes():
@@ -2064,7 +2055,9 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
                       + str(len(erros_vp)) + " linha(s).")
             return
 
-        self._log("Validacao OK — iniciando importacao...")
+        self._dry_run = bool(self.simular_var.get())
+        self._log("Modo SIMULAÇÃO (não grava) — iniciando..." if self._dry_run
+                  else "Validacao OK — iniciando importacao...")
         self.btn_import.configure(state="disabled")
         self.progress.set(0)
         self.nao_encontrados = []

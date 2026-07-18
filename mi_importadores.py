@@ -1026,9 +1026,13 @@ class FinanceiroImportMixin:
         duplicados = 0
         emp_id     = self._get_emp_id(rd)
         dedup_on   = bool(getattr(self, "_dedup_financeiro", False))
+        dry_run    = bool(getattr(self, "_dry_run", False))
 
-        self._log(f"Iniciando INSERT vendaPgto — {total} registros | empId={emp_id}"
-                  + (" | dedup ativo" if dedup_on else "") + " | bulk (executemany)")
+        self._log((f"🔎 SIMULAÇÃO vendaPgto (não grava) — {total} registros | empId={emp_id}"
+                   if dry_run else
+                   f"Iniciando INSERT vendaPgto — {total} registros | empId={emp_id}")
+                  + (" | dedup ativo" if dedup_on else "")
+                  + ("" if dry_run else " | bulk (executemany)"))
 
         nomes_erro = []          # CPF/CNPJ dos lancamentos que deram erro
         SQL   = self._SQL_INS_VENDAPGTO
@@ -1043,6 +1047,11 @@ class FinanceiroImportMixin:
             lote, isolando a(s) ruim(s) sem perder as boas (cada linha também com retry)."""
             nonlocal sucessos, erros, lote, pend
             if not lote:
+                return
+            if dry_run:                        # SIMULAÇÃO: conta o que ENTRARIA, não grava
+                sucessos += len(lote)
+                lote = []
+                pend = set()
                 return
 
             def _bulk():
@@ -1157,20 +1166,29 @@ class FinanceiroImportMixin:
         flush()      # grava o resto (mesmo se cancelado, confirma o que entrou)
 
         # ── Resumo final ─────────────────────────────────────────────────
-        self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos "
-                  f"| ⏭️ {duplicados} já existentes (dup) "
-                  f"| ⚠️ {nao_enc} CPF/CNPJ nao encontrados "
-                  f"| ❌ {erros} erros")
-        # Alerta agregado de datas não reconhecidas (gravadas como NULL). Sem isto,
-        # uma data em formato inesperado sumia em silêncio (classe do bug 3.6.9).
+        if dry_run:
+            self._log(f"🔎 SIMULAÇÃO concluída — ✅ {sucessos} SERIAM inseridos "
+                      f"| ⚠️ {nao_enc} CPF/CNPJ nao encontrados (seriam pulados) "
+                      f"| ❌ 0 erros de gravação (nada foi gravado)")
+        else:
+            self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos "
+                      f"| ⏭️ {duplicados} já existentes (dup) "
+                      f"| ⚠️ {nao_enc} CPF/CNPJ nao encontrados "
+                      f"| ❌ {erros} erros")
+        # Alerta agregado de datas não reconhecidas. Na importação real elas viram
+        # NULL; na SIMULAÇÃO, é justamente o que o usuário quer ver ANTES de gravar.
         di = getattr(self, "_datas_invalidas", None)
         if di:
             tot = sum(di.values())
             det = ", ".join(f"{k}={v}" for k, v in di.items())
-            self._log(f"⚠️  ATENÇÃO: {tot} valor(es) de data NÃO reconhecido(s) e "
-                      f"gravado(s) como NULL ({det}). Verifique o formato das datas "
-                      f"no arquivo (ex.: dd/mm/aaaa, aaaa-mm-dd).")
-        self._ultimo_resultado = {"inseridos": sucessos,
+            self._log(f"⚠️  ATENÇÃO: {tot} valor(es) de data NÃO reconhecido(s) "
+                      + (f"(seriam gravados como NULL)" if dry_run else "e gravado(s) como NULL")
+                      + f" ({det}). Verifique o formato das datas no arquivo "
+                      f"(ex.: dd/mm/aaaa, aaaa-mm-dd).")
+        if dry_run:
+            self._log("ℹ️  Nada foi gravado (modo simulação). Desmarque "
+                      "'🔎 Simular' para importar de verdade.")
+        self._ultimo_resultado = {"simulacao": dry_run, "inseridos": sucessos,
                                   "pulados": nao_enc + duplicados, "erros": erros}
 
         # ── Aviso e opção de salvar linhas não encontradas ────────────────
@@ -1179,6 +1197,7 @@ class FinanceiroImportMixin:
         if self.nao_encontrados and hasattr(self, "_aviso_nao_encontrados"):
             self.after(0, lambda: self._aviso_nao_encontrados())
 
+        # _pos_importacao NÃO renomeia/reseta em dry-run (ver guarda lá dentro).
         _pos_importacao(self, "FINANCEIRO", nomes_erro, erros > 0)
         self._salvar_relatorio()
         self.after(0, lambda: self.btn_import.configure(state="normal"))
