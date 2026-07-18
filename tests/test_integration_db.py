@@ -435,6 +435,23 @@ def test_migracao_produtos_via_headless(orig_conn, db_conn):
     assert prod_depois == prod_antes           # idempotente (pula os já existentes)
 
 
+def test_preflight_bancos_reais_compativeis(orig_conn, db_conn):
+    """PRÉ-FLIGHT contra bancos REAIS: BD_ZERO_TEST é cópia do BD_ZERO, então o
+    schema é idêntico → nenhum bloqueante. Também prova que é SOMENTE LEITURA."""
+    mig = _harness_migracao(SRC_DB)
+    ents = ["clientes", "produtos", "codbarras", "financeiro"]
+    antes = db_conn.cursor().execute("SELECT COUNT(*) FROM cliente").fetchone()[0]
+
+    linhas, res = mig._preflight(orig_conn, db_conn, ents)
+
+    assert res["bloqueantes"] == 0, [l for l in linhas if l.startswith("🔴")]
+    assert res["ok"] >= 4                     # ao menos as tabelas-base compatíveis
+    assert any("schema compatível" in l for l in linhas)
+    # somente leitura: nada mudou no destino
+    depois = db_conn.cursor().execute("SELECT COUNT(*) FROM cliente").fetchone()[0]
+    assert depois == antes
+
+
 def test_migracao_financeiro_via_headless(orig_conn, db_conn):
     """Financeiro ponta-a-ponta via headless: lê a origem, localiza o cliente por
     CPF/CNPJ no destino e insere. Para ser DETERMINÍSTICO (o dedup é value-based e

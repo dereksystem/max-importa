@@ -696,4 +696,29 @@ migracao financeiro tornou-se deterministica. openpyxl no .spec.
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
-- (descrever aqui a próxima alteração)
+PRE-FLIGHT DE SCHEMA (origem x destino), antes de migrar
+- Botao "Verificar compatibilidade" na tela de Migracao +
+  gate automatico ao iniciar (bloqueante exige confirmacao).
+  SOMENTE LEITURA: nao escreve nada.
+- Compara por tabela: existencia, colunas so na origem, tipo
+  divergente, tamanho menor no destino, precisao/escala de
+  decimais, collation e destino NOT NULL x origem nulavel.
+  Mostra contagens origem -> destino.
+- Truncamento MEDIDO: quando a coluna do destino e menor,
+  conta quantas linhas da origem realmente excedem
+  (LEN(col) > tam) -> "12 linha(s) excedem", nao aviso vago.
+- Checa FKs ja desabilitadas no destino e a linha em config.
+- Real: BD_ZERO -> DB_VENDAS acusou 6 bloqueantes (destino nem
+  e banco MaxManager); BD_ZERO -> MAX_ARKALT passou limpo.
+- 7 testes sem banco + 1 de integracao (schema identico sem
+  bloqueante e nada escrito).
+
+CORRECOES
+- pgtPago: o Max espera S = Concluido / N = Aberto, mas os
+  arquivos (e o modelo) traziam 'C'. Novo _norm_pago normaliza
+  sinonimos; valor fora do padrao deriva do pgtDataQuitou e
+  loga aviso. Arquivo-modelo corrigido.
+- "Salvar linhas nao inseridas (.txt)" quebrava com
+  'NoneType' object has no attribute 'iloc' (o _resetar_selecao
+  zerava self.df com o dialogo aberto). Agora o dialogo tira um
+  snapshot das linhas ao abrir.

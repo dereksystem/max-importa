@@ -173,6 +173,111 @@ def test_norm_pago_vazio_deriva_sem_avisar():
     assert not getattr(obj, "_pago_invalidos", None)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PRÉ-FLIGHT de schema (origem × destino) — sem banco, via conexão falsa.
+# ─────────────────────────────────────────────────────────────────────────────
+class _FakeCursor:
+    def __init__(self, conn):
+        self.conn, self._rows = conn, []
+
+    def execute(self, sql, params=()):
+        s = sql.lower()
+        if "sys.columns" in s and "sys.types" in s:
+            self._rows = self.conn.schema.get(params[0] if params else None, [])
+        elif "len(" in s:                     # _contar_excedentes
+            self._rows = [(self.conn.excedentes,)]
+        elif "count(*)" in s:                 # contagem de linhas / config
+            self._rows = [(self.conn.n_linhas,)]
+        else:
+            self._rows = []
+        return self
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class _FakeConn:
+    def __init__(self, schema, n_linhas=10, excedentes=0):
+        self.schema, self.n_linhas, self.excedentes = schema, n_linhas, excedentes
+
+    def cursor(self):
+        return _FakeCursor(self)
+
+
+def _mig():
+    return m.JanelaMigracao.__new__(m.JanelaMigracao)
+
+
+# (nome, tipo, max_length_em_bytes, precision, scale, collation, is_nullable)
+_COL_NOME = ("pgtCliNome", "varchar", 50, 0, 0, "Latin1_General_CI_AS", 1)
+_COL_VAL = ("pgtValor", "decimal", 9, 18, 5, None, 1)
+
+
+def test_preflight_schema_identico_sem_problema():
+    esq = {"vendaPgto": [_COL_NOME, _COL_VAL]}
+    linhas, res = _mig()._preflight(_FakeConn(esq), _FakeConn(esq), ["financeiro"])
+    assert res["bloqueantes"] == 0 and res["avisos"] == 0
+    assert res["ok"] == 1
+    assert any("schema compatível" in l for l in linhas)
+
+
+def test_preflight_tabela_ausente_no_destino_e_bloqueante():
+    origem = _FakeConn({"vendaPgto": [_COL_NOME]})
+    destino = _FakeConn({})                      # tabela não existe
+    linhas, res = _mig()._preflight(origem, destino, ["financeiro"])
+    assert res["bloqueantes"] >= 1
+    assert any("NÃO EXISTE no DESTINO" in l for l in linhas)
+
+
+def test_preflight_coluna_so_na_origem_vira_aviso():
+    origem = _FakeConn({"vendaPgto": [_COL_NOME, _COL_VAL]})
+    destino = _FakeConn({"vendaPgto": [_COL_NOME]})     # falta pgtValor
+    linhas, res = _mig()._preflight(origem, destino, ["financeiro"])
+    assert res["bloqueantes"] == 0 and res["avisos"] >= 1
+    assert any("só na origem" in l for l in linhas)
+
+
+def test_preflight_truncamento_real_e_bloqueante():
+    """Destino menor E linhas que excedem → bloqueante (erro 22001 garantido)."""
+    origem = _FakeConn({"vendaPgto": [_COL_NOME]}, excedentes=12)
+    destino = _FakeConn({"vendaPgto": [("pgtCliNome", "varchar", 20, 0, 0,
+                                        "Latin1_General_CI_AS", 1)]})
+    linhas, res = _mig()._preflight(origem, destino, ["financeiro"])
+    assert res["bloqueantes"] >= 1
+    assert any("12 linha(s) excedem" in l for l in linhas)
+
+
+def test_preflight_menor_mas_sem_linha_excedente_e_so_aviso():
+    origem = _FakeConn({"vendaPgto": [_COL_NOME]}, excedentes=0)
+    destino = _FakeConn({"vendaPgto": [("pgtCliNome", "varchar", 20, 0, 0,
+                                        "Latin1_General_CI_AS", 1)]})
+    linhas, res = _mig()._preflight(origem, destino, ["financeiro"])
+    assert res["bloqueantes"] == 0 and res["avisos"] >= 1
+    assert any("nenhuma linha excede" in l for l in linhas)
+
+
+def test_preflight_tipo_e_collation_divergentes():
+    origem = _FakeConn({"vendaPgto": [_COL_NOME]})
+    destino = _FakeConn({"vendaPgto": [("pgtCliNome", "varchar", 50, 0, 0,
+                                        "SQL_Latin1_General_CP1_CI_AI", 1)]})
+    linhas, res = _mig()._preflight(origem, destino, ["financeiro"])
+    assert any("collation" in l for l in linhas)
+    # tipo diferente
+    destino2 = _FakeConn({"vendaPgto": [("pgtCliNome", "int", 4, 10, 0, None, 1)]})
+    linhas2, res2 = _mig()._preflight(origem, destino2, ["financeiro"])
+    assert any("tipo origem varchar" in l for l in linhas2)
+
+
+def test_preflight_nvarchar_converte_bytes_para_caracteres():
+    """nvarchar guarda max_length em BYTES (2/char): 100 bytes = 50 chars."""
+    esq = {"vendaPgto": [("pgtObs", "nvarchar", 100, 0, 0, "Latin1_General_CI_AS", 1)]}
+    s = _mig()._schema_tabela(_FakeConn(esq), "vendaPgto")
+    assert s["pgtobs"]["tam"] == 50
+
+
 def test_get_datetime_pandas_timestamp_e_nat():
     """Timestamp do pandas (subclasse de datetime) vem da migração; NaT -> NULL."""
     obj = _fake(m.JanelaFinanceiro, {"pgtData": "col"})

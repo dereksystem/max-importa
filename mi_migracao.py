@@ -461,6 +461,171 @@ class MigracaoMixin:
             "pgtClienteId", "pgtCliNome", "pgtNumDoc", "pgtTipoConta")],
     }
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # PRÉ-FLIGHT — compatibilidade de schema origem × destino, ANTES de migrar.
+    # Tudo SOMENTE LEITURA: nenhuma escrita, nenhuma transação. A ideia é
+    # transformar surpresa de runtime (truncamento 22001, coluna inexistente,
+    # collation divergente) em um checklist que o usuário lê antes de decidir.
+    # ─────────────────────────────────────────────────────────────────────────
+    _TABELAS_ENT = {
+        "clientes":   ["cliente", "cliente_empresa"],
+        "permissoes": ["UsuarioPermissao"],
+        "produtos":   ["produto", "produto_empresa"],
+        "codbarras":  ["codBarras"],
+        "financeiro": ["vendaPgto"],
+    }
+    # Tipos de texto: max_length vem em BYTES; nos unicode (n*) são 2 bytes/char.
+    _TIPOS_TEXTO = {"varchar", "nvarchar", "char", "nchar"}
+    _TIPOS_UNICODE = {"nvarchar", "nchar"}
+
+    def _schema_tabela(self, conn, tabela):
+        """Metadados das colunas: {nome_lower: {nome, tipo, tam, prec, escala,
+        collation, nulavel}}. tam = tamanho em CARACTERES (-1 = MAX). {} se a
+        tabela não existir."""
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT c.name, ty.name, c.max_length, c.precision, c.scale, "
+                "       c.collation_name, c.is_nullable "
+                "FROM sys.columns c "
+                "JOIN sys.types ty ON ty.user_type_id = c.user_type_id "
+                "WHERE c.object_id = OBJECT_ID(?) ORDER BY c.column_id", (tabela,))
+            out = {}
+            for nome, tipo, mlen, prec, esc, coll, nul in cur.fetchall():
+                tam = mlen
+                if mlen not in (None, -1) and tipo in self._TIPOS_UNICODE:
+                    tam = mlen // 2
+                out[nome.lower()] = {"nome": nome, "tipo": tipo, "tam": tam,
+                                     "prec": prec, "escala": esc,
+                                     "collation": coll, "nulavel": nul}
+            return out
+        except Exception:
+            return {}
+
+    def _contar_excedentes(self, conn, tabela, coluna, limite):
+        """Quantas linhas da ORIGEM realmente estourariam o tamanho do destino.
+        Transforma 'pode truncar' em 'N linhas VÃO truncar'. None se não der."""
+        try:
+            cur = conn.cursor()
+            cur.execute(f"SELECT COUNT(*) FROM [{tabela}] WHERE LEN([{coluna}]) > ?",
+                        (limite,))
+            return cur.fetchone()[0]
+        except Exception:
+            return None
+
+    def _preflight(self, orig_conn, dest_conn, entidades):
+        """Compara schema origem × destino para as entidades escolhidas.
+        Retorna (linhas, resumo) — resumo = {"bloqueantes": n, "avisos": n, "ok": n}.
+        NÃO escreve nada."""
+        linhas, bloq, avisos, oks = [], 0, 0, 0
+        tabelas = []
+        for ent in entidades:
+            for t in self._TABELAS_ENT.get(ent, []):
+                if t not in tabelas:
+                    tabelas.append(t)
+
+        for tabela in tabelas:
+            so = self._schema_tabela(orig_conn, tabela)
+            sd = self._schema_tabela(dest_conn, tabela)
+            if not so:
+                avisos += 1
+                linhas.append(f"⚠️ {tabela}: não existe na ORIGEM — nada a migrar.")
+                continue
+            if not sd:
+                bloq += 1
+                linhas.append(f"🔴 {tabela}: NÃO EXISTE no DESTINO — a migração desta "
+                              f"entidade vai falhar.")
+                continue
+
+            try:
+                n_orig = orig_conn.cursor().execute(
+                    f"SELECT COUNT(*) FROM [{tabela}]").fetchone()[0]
+                n_dest = dest_conn.cursor().execute(
+                    f"SELECT COUNT(*) FROM [{tabela}]").fetchone()[0]
+            except Exception:
+                n_orig = n_dest = "?"
+
+            probs = []
+            faltantes = [d["nome"] for k, d in so.items() if k not in sd]
+            if faltantes:
+                avisos += 1
+                amostra = ", ".join(faltantes[:8])
+                mais = f" (+{len(faltantes) - 8})" if len(faltantes) > 8 else ""
+                probs.append(f"   ⚠️ {len(faltantes)} coluna(s) só na origem — o dado "
+                             f"NÃO será copiado: {amostra}{mais}")
+
+            for k, o in so.items():
+                d = sd.get(k)
+                if not d:
+                    continue
+                # tipo base diferente
+                if o["tipo"] != d["tipo"]:
+                    avisos += 1
+                    probs.append(f"   ⚠️ {o['nome']}: tipo origem {o['tipo']} × destino "
+                                 f"{d['tipo']} — risco de conversão")
+                    continue
+                # texto menor no destino → mede o estrago REAL na origem
+                if (o["tipo"] in self._TIPOS_TEXTO and o["tam"] not in (None, -1)
+                        and d["tam"] not in (None, -1) and d["tam"] < o["tam"]):
+                    n = self._contar_excedentes(orig_conn, tabela, o["nome"], d["tam"])
+                    if n:
+                        bloq += 1
+                        probs.append(f"   🔴 {o['nome']}: destino {d['tipo']}({d['tam']}) "
+                                     f"< origem ({o['tam']}) e **{n} linha(s) excedem** "
+                                     f"— truncamento/erro 22001 garantido")
+                    else:
+                        avisos += 1
+                        probs.append(f"   ⚠️ {o['nome']}: destino {d['tipo']}({d['tam']}) "
+                                     f"< origem ({o['tam']}), mas nenhuma linha excede hoje")
+                # numérico com menos precisão/escala
+                elif (o["tipo"] in ("decimal", "numeric")
+                      and (d["prec"], d["escala"]) < (o["prec"], o["escala"])):
+                    avisos += 1
+                    probs.append(f"   ⚠️ {o['nome']}: destino {d['tipo']}({d['prec']},"
+                                 f"{d['escala']}) menor que origem ({o['prec']},{o['escala']})"
+                                 f" — risco de arredondamento")
+                # collation divergente (afeta comparação/ordenação e acentuação)
+                elif o["collation"] and d["collation"] and o["collation"] != d["collation"]:
+                    avisos += 1
+                    probs.append(f"   ⚠️ {o['nome']}: collation origem {o['collation']} × "
+                                 f"destino {d['collation']}")
+                # destino NOT NULL onde a origem permite NULL → INSERT pode falhar
+                elif o["nulavel"] and not d["nulavel"]:
+                    avisos += 1
+                    probs.append(f"   ⚠️ {o['nome']}: destino é NOT NULL mas a origem "
+                                 f"aceita NULL — linhas com vazio falham")
+
+            cab = f"{tabela}: origem {n_orig} linha(s) → destino {n_dest} linha(s)"
+            if probs:
+                linhas.append(f"⚠️ {cab}")
+                linhas.extend(probs)
+            else:
+                oks += 1
+                linhas.append(f"✅ {cab} — schema compatível")
+
+        # FKs já desabilitadas no destino ANTES de começar (migração anterior travada?)
+        try:
+            fks_off = self._fks_desabilitadas(dest_conn)
+            if fks_off:
+                avisos += 1
+                linhas.append(f"⚠️ destino tem {len(fks_off)} FK(s) já DESABILITADA(s) "
+                              f"antes de migrar — resquício de execução interrompida.")
+        except Exception:
+            pass
+
+        # config/empId no destino (o import usa 'SELECT TOP 1 cofId FROM config')
+        try:
+            if dest_conn.cursor().execute(
+                    "SELECT COUNT(*) FROM config").fetchone()[0] == 0:
+                bloq += 1
+                linhas.append("🔴 destino sem linha em 'config' — empId não resolve.")
+        except Exception:
+            avisos += 1
+            linhas.append("⚠️ não foi possível ler 'config' no destino.")
+
+        resumo = {"bloqueantes": bloq, "avisos": avisos, "ok": oks}
+        return linhas, resumo
+
     def _validar_conteudo(self, orig_conn, dest_conn, entidades):
         """Valida CONTEÚDO (não só a contagem): compara a taxa de preenchimento
         (não-NULL) de colunas-chave entre origem e destino. Normalizado (proporção),

@@ -2297,6 +2297,13 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
                                         fg_color=MD_RED, hover_color=MD_RED_HOV,
                                         command=self._iniciar)
         self.btn_migrar.pack(side="left", padx=(0, 12))
+        # Pré-flight: confere compatibilidade de schema SEM escrever nada.
+        self.btn_preflight = ctk.CTkButton(
+            botmig, text="🔍  Verificar compatibilidade", width=250, height=44,
+            font=ctk.CTkFont(size=13, weight="bold"),
+            fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
+            command=self._rodar_preflight)
+        self.btn_preflight.pack(side="left", padx=(0, 12))
         # Botão Cancelar — habilita só durante a migração (cancela entre entidades)
         self._criar_btn_cancelar(botmig, side="left")
         self.btn_cancelar.configure(width=200, height=44,
@@ -2488,6 +2495,79 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
             return None
         return {k: v for k, v in res.items() if k != "ok"}
 
+    # ── Pré-flight de schema (SOMENTE LEITURA) ─────────────────────────────
+    def _selecao_migracao(self):
+        """Valida e devolve (origem, destino, entidades) ou None (já avisou o usuário)."""
+        origem, destino = self.combo_orig.get(), self.combo_dest.get()
+        if not origem or not destino:
+            messagebox.showwarning("Atenção", "Selecione origem e destino.", parent=self)
+            return None
+        if origem == destino:
+            messagebox.showwarning("Atenção",
+                "Origem e destino devem ser bancos DIFERENTES.", parent=self)
+            return None
+        entidades = [k for k, v in self.chk.items() if v.get()]
+        if not entidades:
+            messagebox.showwarning("Atenção", "Marque ao menos um tipo de dado.", parent=self)
+            return None
+        return origem, destino, entidades
+
+    def _preflight_conectado(self, origem, destino, entidades):
+        """Abre as duas conexões, roda o pré-flight e fecha. Retorna (linhas, resumo)."""
+        oc = pyodbc.connect(self.base_conn_str + f"DATABASE={origem};", timeout=15)
+        try:
+            dc = pyodbc.connect(self.base_conn_str + f"DATABASE={destino};", timeout=15)
+            try:
+                return self._preflight(oc, dc, entidades)
+            finally:
+                try:
+                    dc.close()
+                except Exception:
+                    pass
+        finally:
+            try:
+                oc.close()
+            except Exception:
+                pass
+
+    def _rodar_preflight(self):
+        sel = self._selecao_migracao()
+        if not sel:
+            return
+        self.btn_preflight.configure(state="disabled")
+        threading.Thread(target=self._preflight_worker, args=sel, daemon=True).start()
+
+    def _preflight_worker(self, origem, destino, entidades):
+        try:
+            self._log("")
+            self._log(f"🔍 PRÉ-FLIGHT — schema {origem} → {destino} (somente leitura)")
+            linhas, resumo = self._preflight_conectado(origem, destino, entidades)
+            for l in linhas:
+                self._log(l)
+            b, a, ok = resumo["bloqueantes"], resumo["avisos"], resumo["ok"]
+            self._log(f"🔍 PRÉ-FLIGHT concluído — 🔴 {b} bloqueante(s) | ⚠️ {a} aviso(s) "
+                      f"| ✅ {ok} tabela(s) compatível(is)")
+            if b:
+                txt = (f"{b} problema(s) BLOQUEANTE(S) e {a} aviso(s).\n\n"
+                       "Migrar assim provavelmente vai FALHAR ou PERDER dados.\n"
+                       "O detalhe está no log desta tela.")
+                self.after(0, lambda t=txt: messagebox.showerror(
+                    "Pré-flight: bloqueante", t, parent=self))
+            elif a:
+                txt = f"Nenhum bloqueante, mas {a} aviso(s).\n\nRevise o log antes de migrar."
+                self.after(0, lambda t=txt: messagebox.showwarning(
+                    "Pré-flight: avisos", t, parent=self))
+            else:
+                self.after(0, lambda: messagebox.showinfo(
+                    "Pré-flight OK",
+                    "Schema compatível: nenhum problema encontrado.", parent=self))
+        except Exception as e:
+            self._log(f"❌ Pré-flight falhou: {str(e)[:200]}")
+            self.after(0, lambda m=str(e): messagebox.showerror(
+                "Erro no pré-flight", m, parent=self))
+        finally:
+            self.after(0, lambda: self.btn_preflight.configure(state="normal"))
+
     # ── Fluxo ──────────────────────────────────────────────────────────────
     def _iniciar(self):
         origem  = self.combo_orig.get()
@@ -2502,6 +2582,23 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
         if not entidades:
             messagebox.showwarning("Atenção", "Marque ao menos um tipo de dado.", parent=self)
             return
+
+        # Pré-flight de SCHEMA: se houver bloqueante, exige confirmação explícita.
+        try:
+            _linhas, _res = self._preflight_conectado(origem, destino, entidades)
+            if _res["bloqueantes"]:
+                for _l in _linhas:
+                    self._log(_l)
+                if not messagebox.askyesno(
+                        "Pré-flight: problemas bloqueantes",
+                        f"O pré-flight encontrou {_res['bloqueantes']} problema(s) "
+                        f"BLOQUEANTE(S) de schema (detalhe no log).\n\n"
+                        "Migrar assim provavelmente vai FALHAR ou PERDER dados.\n\n"
+                        "Deseja continuar mesmo assim?", parent=self):
+                    self._log("⛔ Migração abortada pelo pré-flight.")
+                    return
+        except Exception:
+            pass
 
         # Pré-flight: FKs DESABILITADAS no destino (resto de migração interrompida)
         try:

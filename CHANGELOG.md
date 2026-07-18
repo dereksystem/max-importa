@@ -8,6 +8,36 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [Não liberado] — versão a definir
+
+### Pré-flight: compatibilidade de schema origem × destino (antes de migrar)
+Novo botão **"🔍 Verificar compatibilidade"** na tela de Migração e **gate automático**
+no início da migração (se houver bloqueante, exige confirmação explícita). Roda
+**somente leitura** — nenhuma escrita, nenhuma transação.
+- Compara, por tabela de cada entidade escolhida: existência da tabela, colunas só na
+  origem (dado que não seria copiado), **tipo** divergente, **tamanho menor no destino**,
+  precisão/escala de decimais, **collation** divergente e destino NOT NULL onde a
+  origem aceita NULL. Mostra também as contagens origem → destino.
+- **Truncamento medido, não teórico:** quando a coluna do destino é menor, conta
+  quantas linhas da origem **realmente** excedem (`LEN(col) > tam`) — vira
+  "🔴 12 linha(s) excedem" em vez de um aviso genérico.
+- Checa ainda FKs já desabilitadas no destino e a existência de `config` (empId).
+- Validado no mundo real: `BD_ZERO → DB_VENDAS` acusou 6 bloqueantes (o destino nem é
+  um banco MaxManager); `BD_ZERO → MAX_ARKALT` passou limpo, com as contagens.
+- 7 testes sem banco (conexão falsa exercita cada ramo) + 1 de integração que confirma
+  schema idêntico sem bloqueante **e** que nada foi escrito.
+
+### Correções
+- **`pgtPago`**: o MaxManager espera **S = Concluído / N = Aberto**, mas os arquivos (e o
+  próprio modelo de importação) traziam `C` de "Concluído" — valor inválido. Novo
+  `_norm_pago` normaliza sinônimos (C/SIM/PAGO/QUITADO/1 → `S`; N/A/ABERTO/0 → `N`);
+  valor fora do padrão deriva do `pgtDataQuitou` e loga aviso. Modelo corrigido.
+- **"Salvar linhas não inseridas (.txt)"** quebrava com `'NoneType' object has no
+  attribute 'iloc'`: o `_resetar_selecao` zerava `self.df` com o diálogo ainda aberto.
+  Agora o diálogo tira um snapshot das linhas ao abrir.
+
+---
+
 ## [3.7.0] — 2026-07-17
 
 ### Importação por arquivo: Excel, encoding automático e simulação (dry-run)
