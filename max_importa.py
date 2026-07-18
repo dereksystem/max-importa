@@ -1762,7 +1762,7 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         ("pgtData",      "vendaPgto", "Data do lançamento",                 True),
         ("pgtVecmto",    "vendaPgto", "Data de vencimento",                 True),
         ("pgtTipoConta", "vendaPgto", "Tipo Conta (varchar 1)",             True),
-        ("pgtPago",      "vendaPgto", "Pago (varchar 1)",                   True),
+        ("pgtPago",      "vendaPgto", "Situação: S = Concluído / N = Aberto", True),
         # ── OPCIONAIS ─────────────────────────────────────────────────────
         ("pgtNumDoc",       "vendaPgto", "Número do documento",             False),
         ("pgtObs",          "vendaPgto", "Observação",                      False),
@@ -2066,6 +2066,18 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
 
     # ── INSERT vendaPgto ──────────────────────────────────────────────────
     def _aviso_nao_encontrados(self):
+        # SNAPSHOT das linhas AGORA: logo após a importação, _pos_importacao chama
+        # _resetar_selecao, que zera self.df — mas este diálogo continua aberto e o
+        # usuário clica "Salvar" DEPOIS. Sem o snapshot, dava
+        # "'NoneType' object has no attribute 'iloc'".
+        _df_snapshot = None
+        try:
+            if getattr(self, "df", None) is not None:
+                _idx = sorted({item["_linha"] - 2 for item in self.nao_encontrados})
+                _df_snapshot = self.df.iloc[_idx].copy()
+        except Exception:
+            _df_snapshot = None
+
         win = ctk.CTkToplevel(self)
         win.title("CPF/CNPJ Não Encontrados")
         win.resizable(True, True)
@@ -2107,9 +2119,15 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
             if not path:
                 return
             try:
-                # Recria o arquivo original apenas com as linhas não inseridas
-                linhas_idx = {item["_linha"] - 2 for item in self.nao_encontrados}
-                df_nao = self.df.iloc[sorted(linhas_idx)]
+                # Usa o SNAPSHOT tirado ao abrir o diálogo (self.df já pode ter sido
+                # zerado pelo _resetar_selecao). Fallback: reconstrói a partir dos
+                # valores já guardados em nao_encontrados (só as colunas mapeadas).
+                df_nao = _df_snapshot
+                if df_nao is None:
+                    df_nao = pd.DataFrame([
+                        {k: v for k, v in item.items() if not k.startswith("_")}
+                        for item in self.nao_encontrados
+                    ])
                 df_nao.to_csv(path, sep="\t", index=False, encoding="utf-8")
                 messagebox.showinfo("Salvo",
                     f"Arquivo salvo com {len(df_nao)} linha(s) nao inserida(s):\n{path}",

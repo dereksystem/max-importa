@@ -138,6 +138,41 @@ def test_get_datetime_registra_invalida_nao_silenciosa():
     assert obj._datas_invalidas.get("pgtData") == 1
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# pgtPago — o Max espera S = Concluído / N = Aberto. Arquivos (e o modelo antigo)
+# traziam 'C' de "Concluído", que gravava status inválido no banco.
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("entrada, esperado", [
+    ("C", "S"), ("c", "S"), ("S", "S"), ("SIM", "S"), ("PAGO", "S"),
+    ("QUITADO", "S"), ("1", "S"), ("Concluído", "S"),
+    ("N", "N"), ("n", "N"), ("NAO", "N"), ("A", "N"), ("ABERTO", "N"), ("0", "N"),
+])
+def test_norm_pago_normaliza_sinonimos(entrada, esperado):
+    obj = _fake(m.JanelaFinanceiro, {"pgtPago": "col"})
+    # tem_data_quitou não deve importar quando o valor É reconhecido
+    assert obj._norm_pago({"col": entrada}, True) == esperado
+    assert obj._norm_pago({"col": entrada}, False) == esperado
+
+
+def test_norm_pago_desconhecido_deriva_da_data_quitou():
+    """Valor fora do padrão não é gravado às cegas: deriva do pgtDataQuitou e avisa."""
+    obj = _fake(m.JanelaFinanceiro, {"pgtPago": "col"})
+    logs = []
+    obj._log = lambda msg: logs.append(msg)
+    assert obj._norm_pago({"col": "XPTO"}, True) == "S"    # tem quitação → concluído
+    assert obj._norm_pago({"col": "XPTO"}, False) == "N"   # sem quitação → aberto
+    assert obj._pago_invalidos.get("XPTO") == 2
+    assert logs and "não reconhecido" in logs[0]
+
+
+def test_norm_pago_vazio_deriva_sem_avisar():
+    """Campo vazio/não mapeado é ausência legítima: deriva, mas NÃO conta como inválido."""
+    obj = _fake(m.JanelaFinanceiro, {"pgtPago": "col"})
+    assert obj._norm_pago({"col": ""}, True) == "S"
+    assert obj._norm_pago({}, False) == "N"
+    assert not getattr(obj, "_pago_invalidos", None)
+
+
 def test_get_datetime_pandas_timestamp_e_nat():
     """Timestamp do pandas (subclasse de datetime) vem da migração; NaT -> NULL."""
     obj = _fake(m.JanelaFinanceiro, {"pgtData": "col"})

@@ -1012,6 +1012,42 @@ class FinanceiroImportMixin:
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )
 
+    # ── pgtPago: o MaxManager espera S = Concluído / N = Aberto ──────────────
+    # Arquivos de origem (e o antigo modelo de importação) traziam 'C' de
+    # "Concluído", que NÃO é valor válido no Max e deixava o título com status
+    # errado. Aqui os sinônimos comuns são normalizados para S/N.
+    _PAGO_SIM = {"S", "SIM", "C", "CONCLUIDO", "CONCLUÍDO", "P", "PAGO",
+                 "Q", "QUITADO", "1", "TRUE", "T", "Y", "YES"}
+    _PAGO_NAO = {"N", "NAO", "NÃO", "A", "ABERTO", "PENDENTE", "0",
+                 "FALSE", "F", "NO"}
+
+    def _norm_pago(self, row, tem_data_quitou):
+        """Normaliza pgtPago para 'S' (Concluído) ou 'N' (Aberto).
+        Valor desconhecido/vazio NÃO é gravado às cegas: deriva do pgtDataQuitou
+        (tem data de quitação ⇒ concluído) e registra um aviso, para o caso
+        aparecer no log em vez de sumir."""
+        bruto = self._get_str(row, "pgtPago")
+        if bruto is not None:
+            chave = str(bruto).strip().upper()
+            if chave in self._PAGO_SIM:
+                return "S"
+            if chave in self._PAGO_NAO:
+                return "N"
+        derivado = "S" if tem_data_quitou else "N"
+        if bruto is not None:      # tinha valor, mas não reconhecido
+            cont = getattr(self, "_pago_invalidos", None)
+            if cont is None:
+                cont = self._pago_invalidos = {}
+            cont[str(bruto)[:20]] = cont.get(str(bruto)[:20], 0) + 1
+            n = sum(cont.values())
+            if n <= 5 or n % 500 == 0:
+                try:
+                    self._log(f"⚠️  pgtPago '{bruto}' não reconhecido — assumido "
+                              f"'{derivado}' pelo pgtDataQuitou (S=Concluído/N=Aberto).")
+                except Exception:
+                    pass
+        return derivado
+
     def _inserir_financeiro(self):
         ins = self.conn.cursor()          # cursor do INSERT (bulk via executemany)
         rd  = self.conn.cursor()          # cursor de leitura (lookup / dedup)
@@ -1153,7 +1189,7 @@ class FinanceiroImportMixin:
                 pgt_data, pgt_vecmto,
                 self._get_str_max(row, "pgtObs", 1000),
                 pgt_tipoconta,
-                self._get_str_max(row, "pgtPago", 1),
+                self._norm_pago(row, pgt_data_quit is not None),
                 pgt_data_quit,
                 self._get_str_max(row, "pgtNossoNumero", 30),
             )
@@ -1185,6 +1221,12 @@ class FinanceiroImportMixin:
                       + (f"(seriam gravados como NULL)" if dry_run else "e gravado(s) como NULL")
                       + f" ({det}). Verifique o formato das datas no arquivo "
                       f"(ex.: dd/mm/aaaa, aaaa-mm-dd).")
+        pg = getattr(self, "_pago_invalidos", None)
+        if pg:
+            det = ", ".join(f"'{k}'={v}" for k, v in pg.items())
+            self._log(f"⚠️  pgtPago com valor(es) fora do padrão ({det}) — "
+                      f"normalizado(s) pelo pgtDataQuitou. O Max espera "
+                      f"S = Concluído / N = Aberto.")
         if dry_run:
             self._log("ℹ️  Nada foi gravado (modo simulação). Desmarque "
                       "'🔎 Simular' para importar de verdade.")
