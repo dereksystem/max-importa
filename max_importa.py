@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, simpledialog
 import pandas as pd
 import pyodbc
 import logging
@@ -11,6 +11,7 @@ import re
 from PIL import Image as PILImage
 
 import mi_arquivo   # leitura resiliente de arquivos (xlsx + autodetecção de encoding)
+import mi_perfis    # perfis de mapeamento de colunas por layout de arquivo
 
 # ── Config, cores, cripto e credenciais (extraídos para mi_config.py) ──────────
 from mi_config import (
@@ -266,6 +267,102 @@ class CancelavelMixin:
             resumo.configure(
                 text=f"✓  {mapeados}/{total} campos mapeados — todos os obrigatórios OK.",
                 text_color=TC_STATUS_OK)
+
+    # ── Perfis de mapeamento (salvar/aplicar por layout de arquivo) ──────────
+    # O auto-mapeamento só casa nomes IDÊNTICOS; arquivos de terceiros exigem
+    # remapear tudo na mão a cada importação. O perfil guarda esse trabalho.
+    def _criar_barra_perfis(self, parent, modulo):
+        """Barra 'Perfil de mapeamento': combo + Aplicar/Salvar/Excluir.
+        `modulo` = PRODUTOS | CLIENTES | FINANCEIRO (namespace no arquivo de perfis)."""
+        self._perfil_modulo = modulo
+        barra = ctk.CTkFrame(parent, fg_color="transparent")
+        ctk.CTkLabel(barra, text="Perfil de mapeamento:",
+                     font=ctk.CTkFont(size=11), text_color=MD_GRAY).pack(side="left")
+        self.combo_perfil = ctk.CTkComboBox(barra, width=210, state="readonly",
+                                            font=ctk.CTkFont(size=11), values=[])
+        self.combo_perfil.pack(side="left", padx=(6, 6))
+        for txt, cmd, cor in (("Aplicar", self._aplicar_perfil, None),
+                              ("Salvar…", self._salvar_perfil, None),
+                              ("Excluir", self._excluir_perfil, "#8A1F1F")):
+            ctk.CTkButton(barra, text=txt, width=72, height=26,
+                          font=ctk.CTkFont(size=11),
+                          fg_color=cor or "transparent", border_width=0 if cor else 1,
+                          text_color="white" if cor else TC_TEXT_MAIN,
+                          command=cmd).pack(side="left", padx=(0, 6))
+        self._recarregar_perfis()
+        return barra
+
+    def _recarregar_perfis(self):
+        combo = getattr(self, "combo_perfil", None)
+        if combo is None:
+            return
+        nomes = mi_perfis.listar(getattr(self, "_perfil_modulo", ""))
+        combo.configure(values=nomes or ["(nenhum perfil salvo)"])
+        combo.set(nomes[0] if nomes else "(nenhum perfil salvo)")
+
+    def _mapping_atual(self):
+        """{campo: coluna} do que está selecionado nos combos agora."""
+        return {campo: var.get()
+                for campo, var in (getattr(self, "mapping_vars", {}) or {}).items()
+                if var.get() and var.get() != self._IGNORAR_MAP}
+
+    def _salvar_perfil(self):
+        mapping = self._mapping_atual()
+        if not mapping:
+            messagebox.showwarning("Perfil", "Nenhum campo mapeado para salvar.",
+                                   parent=self)
+            return
+        nome = simpledialog.askstring("Salvar perfil de mapeamento",
+                                      "Nome do perfil (ex.: 'Planilha Contmatic'):",
+                                      parent=self)
+        if not nome or not nome.strip():
+            return
+        nome = nome.strip()
+        if nome in mi_perfis.listar(self._perfil_modulo) and not messagebox.askyesno(
+                "Perfil", f"Já existe um perfil '{nome}'. Sobrescrever?", parent=self):
+            return
+        if mi_perfis.salvar(self._perfil_modulo, nome, mapping):
+            self._recarregar_perfis()
+            self.combo_perfil.set(nome)
+            self._log(f"💾 Perfil '{nome}' salvo com {len(mapping)} campo(s).")
+        else:
+            messagebox.showerror("Perfil", "Não foi possível gravar o perfil.", parent=self)
+
+    def _aplicar_perfil(self):
+        nome = (getattr(self, "combo_perfil", None) and self.combo_perfil.get()) or ""
+        perfil = mi_perfis.obter(self._perfil_modulo, nome)
+        if not perfil:
+            messagebox.showwarning("Perfil", "Selecione um perfil salvo.", parent=self)
+            return
+        if getattr(self, "df", None) is None:
+            messagebox.showwarning("Perfil", "Carregue o arquivo antes de aplicar o perfil.",
+                                   parent=self)
+            return
+        aplicaveis, ausentes = mi_perfis.aplicavel(perfil, list(self.df.columns))
+        for campo, var in (getattr(self, "mapping_vars", {}) or {}).items():
+            if campo in aplicaveis:
+                var.set(aplicaveis[campo])
+        self._atualizar_status_mapeamento()
+        self._log(f"📋 Perfil '{nome}' aplicado — {len(aplicaveis)} campo(s) mapeado(s).")
+        if ausentes:
+            det = ", ".join(f"{c}→'{col}'" for c, col in list(ausentes.items())[:8])
+            self._log(f"⚠️  {len(ausentes)} campo(s) do perfil não existem neste arquivo "
+                      f"(layout mudou): {det}")
+            messagebox.showwarning(
+                "Perfil aplicado parcialmente",
+                f"{len(aplicaveis)} campo(s) mapeado(s).\n\n"
+                f"{len(ausentes)} coluna(s) do perfil NÃO existem neste arquivo:\n"
+                + "\n".join(f"  • {c} → '{col}'" for c, col in list(ausentes.items())[:12]),
+                parent=self)
+
+    def _excluir_perfil(self):
+        nome = (getattr(self, "combo_perfil", None) and self.combo_perfil.get()) or ""
+        if not mi_perfis.obter(self._perfil_modulo, nome):
+            return
+        if messagebox.askyesno("Perfil", f"Excluir o perfil '{nome}'?", parent=self):
+            mi_perfis.excluir(self._perfil_modulo, nome)
+            self._recarregar_perfis()
+            self._log(f"🗑️ Perfil '{nome}' excluído.")
 
 
 def garantir_pasta_logs(parent):
@@ -966,6 +1063,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
             font=ctk.CTkFont(size=11), text_color=MD_GRAY)
         self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
+        self._criar_barra_perfis(self, "PRODUTOS").pack(padx=24, pady=(6, 0), anchor="w")
 
         bot = ctk.CTkFrame(self, fg_color="transparent")
         bot.pack(padx=24, pady=8, fill="x")
@@ -1390,6 +1488,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
             font=ctk.CTkFont(size=11), text_color=MD_GRAY)
         self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
+        self._criar_barra_perfis(self, "CLIENTES").pack(padx=24, pady=(6, 0), anchor="w")
 
         bot = ctk.CTkFrame(self, fg_color="transparent")
         bot.pack(padx=24, pady=8, fill="x")
@@ -1920,6 +2019,7 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
             font=ctk.CTkFont(size=11), text_color=MD_GRAY)
         self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
+        self._criar_barra_perfis(self, "FINANCEIRO").pack(padx=24, pady=(6, 0), anchor="w")
 
         bot = ctk.CTkFrame(self, fg_color="transparent")
         bot.pack(padx=24, pady=8, fill="x")

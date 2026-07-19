@@ -10,6 +10,31 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Relatório HTML de fechamento
+Além do `.txt` (ler no editor) e do `.json` (integrar), cada importação passa a gerar
+`RELATORIO_<OPERAÇÃO>_<ts>.html` na pasta de logs — para **entender de relance**.
+- Cartões (inseridos / pulados / erros / total), **barras proporcionais**, banner de
+  status (sucesso, com erros ou **SIMULAÇÃO**), tabela de CPF/CNPJ não encontrados,
+  itens com erro e o log completo num bloco recolhível.
+- Seção **Qualidade dos dados** consolidando os alertas: regras de negócio, datas não
+  reconhecidas e `pgtPago` fora do padrão, cada um com quantidade e tratamento aplicado.
+- **Autocontido:** CSS inline, zero requisição externa — abre offline com duplo clique
+  e imprime bem (`@media print`). Todo conteúdo vindo do arquivo do usuário é
+  escapado (teste cobre tentativa de injeção de `<script>`).
+- Tabelas grandes são limitadas a 1.000 linhas com aviso, para o arquivo não explodir.
+
+### Perfis de mapeamento salvos
+O auto-mapeamento só casa nomes IDÊNTICOS; arquivos de terceiros exigiam remapear
+tudo na mão a cada importação. Agora dá para salvar esse trabalho.
+- Novo módulo `mi_perfis.py` + barra **"Perfil de mapeamento"** nas 3 telas
+  (Produtos/Clientes/Financeiro): combo + **Aplicar / Salvar… / Excluir**.
+- Perfis ficam em `max_importa_perfis.json`, ao lado do executável, **separados por
+  módulo** (um perfil de Clientes não aparece em Financeiro).
+- Ao aplicar, confronta o perfil com as colunas do arquivo carregado: mapeia o que
+  existe e **avisa explicitamente** quais colunas sumiram (layout mudou), em vez de
+  falhar em silêncio.
+- Arquivo de perfis corrompido não derruba nada (best-effort, com teste).
+
 ### Validação de regras de negócio no parse (qualidade do dado)
 Novas funções puras em `mi_validacao.py` — `cpf_valido`, `cnpj_valido`,
 `cpf_cnpj_valido`, `email_valido`, `data_plausivel`, `valor_positivo` — aplicadas

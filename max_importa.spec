@@ -25,6 +25,7 @@ a = Analysis(
         'mi_importadores',  # módulo próprio (mixins de importação por entidade)
         'mi_validacao',     # módulo próprio (regras de validação puras)
         'mi_arquivo',       # módulo próprio (leitura xlsx/csv + autodetecção encoding)
+        'mi_perfis',        # módulo próprio (perfis de mapeamento por layout)
         'customtkinter',
         'pyodbc',
         'pandas',

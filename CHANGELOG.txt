@@ -696,6 +696,31 @@ migracao financeiro tornou-se deterministica. openpyxl no .spec.
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+RELATORIO HTML DE FECHAMENTO
+- Alem do .txt e do .json, cada importacao gera
+  RELATORIO_<OPERACAO>_<ts>.html na pasta de logs.
+- Cartoes (inseridos/pulados/erros/total), barras
+  proporcionais, banner de status (ok / com erros / SIMULACAO),
+  tabela de CPF/CNPJ nao encontrados, itens com erro e log
+  completo num bloco recolhivel.
+- Secao "Qualidade dos dados" consolida os alertas: regras de
+  negocio, datas nao reconhecidas e pgtPago fora do padrao.
+- AUTOCONTIDO: CSS inline, ZERO requisicao externa - abre
+  offline com duplo clique e imprime bem. Todo conteudo do
+  arquivo do usuario e escapado (teste cobre injecao de script).
+- Tabelas grandes limitadas a 1.000 linhas com aviso.
+
+PERFIS DE MAPEAMENTO SALVOS
+- O auto-mapeamento so casa nomes IDENTICOS; arquivos de
+  terceiros exigiam remapear tudo na mao toda vez.
+- Novo mi_perfis.py + barra "Perfil de mapeamento" nas 3 telas:
+  combo + Aplicar / Salvar... / Excluir.
+- Perfis em max_importa_perfis.json ao lado do executavel,
+  separados por modulo (PRODUTOS/CLIENTES/FINANCEIRO).
+- Ao aplicar, confronta com as colunas do arquivo: mapeia o que
+  existe e AVISA quais colunas sumiram (layout mudou).
+- Arquivo de perfis corrompido nao derruba nada.
+
 VALIDACAO DE REGRAS DE NEGOCIO NO PARSE (qualidade do dado)
 - Funcoes puras em mi_validacao.py: cpf_valido, cnpj_valido,
   cpf_cnpj_valido, email_valido, data_plausivel, valor_positivo.
