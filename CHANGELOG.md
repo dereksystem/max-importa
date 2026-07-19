@@ -8,7 +8,7 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
-## [Não liberado] — versão a definir
+## [3.8.0] — 2026-07-18
 
 ### Relatório HTML de fechamento
 Além do `.txt` (ler no editor) e do `.json` (integrar), cada importação passa a gerar

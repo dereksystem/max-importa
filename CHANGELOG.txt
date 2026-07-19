@@ -694,7 +694,7 @@ Testes: tests/test_arquivo.py (13), dry-run confirma 0 gravacoes,
 migracao financeiro tornou-se deterministica. openpyxl no .spec.
 
 --------------------------------------------------------
- [Próxima versão] - a definir
+ [3.8.0] - 2026-07-18
 --------------------------------------------------------
 RELATORIO HTML DE FECHAMENTO
 - Alem do .txt e do .json, cada importacao gera
@@ -765,3 +765,8 @@ CORRECOES
   'NoneType' object has no attribute 'iloc' (o _resetar_selecao
   zerava self.df com o dialogo aberto). Agora o dialogo tira um
   snapshot das linhas ao abrir.
+
+--------------------------------------------------------
+ [Próxima versão] - a definir
+--------------------------------------------------------
+- (descrever aqui a próxima alteração)
