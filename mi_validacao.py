@@ -108,6 +108,165 @@ def valor_positivo(valor) -> bool:
         return True       # não numérico é problema de outra regra, não desta
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DEDUPE de clientes — detecta duplicados PROVÁVEIS, para conferência humana.
+# NUNCA funde registros automaticamente: juntar dois clientes é irreversível e o
+# risco de unir empresas distintas (matriz × filial, homônimos) é real. Aqui só
+# se APONTA o par suspeito; a decisão é de quem conhece a base.
+# ─────────────────────────────────────────────────────────────────────────────
+import unicodedata
+
+# Sufixos societários e ruídos que atrapalham a comparação de nomes.
+_SUFIXOS = ("LTDA", "LTDA ME", "ME", "EPP", "EIRELI", "MEI", "SA", "S A",
+            "CIA", "COMPANHIA", "SOCIEDADE ANONIMA", "EM RECUPERACAO JUDICIAL")
+
+
+def normalizar_nome(nome) -> str:
+    """Forma canônica para comparar: sem acento, maiúsculo, sem pontuação,
+    sem sufixo societário e com espaços colapsados."""
+    if nome is None:
+        return ""
+    s = unicodedata.normalize("NFKD", str(nome))
+    s = "".join(c for c in s if not unicodedata.combining(c))   # tira acentos
+    s = s.upper()
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)          # pontuação vira espaço
+    s = re.sub(r"\s+", " ", s).strip()
+    # remove sufixos societários no FIM do nome (repete: "X LTDA ME" -> "X")
+    mudou = True
+    while mudou:
+        mudou = False
+        for suf in sorted(_SUFIXOS, key=len, reverse=True):
+            if s.endswith(" " + suf):
+                s = s[: -(len(suf) + 1)].strip()
+                mudou = True
+    return s
+
+
+def documento_placeholder(doc) -> bool:
+    """True quando o documento é um 'preenchedor' que NÃO identifica ninguém —
+    vazio ou todos os dígitos iguais (00000000000, 11111111111...). Encontrado
+    de verdade na base: 7 clientes e 35 lançamentos com 00000000000."""
+    d = so_digitos(doc)
+    return (not d) or (len(set(d)) == 1)
+
+
+def similaridade(a, b) -> float:
+    """0.0 a 1.0 entre dois nomes JÁ normalizados. Usa difflib (biblioteca
+    padrão) — sem dependência nova."""
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    import difflib
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _bloco(nome_norm: str) -> str:
+    """Chave de BLOCAGEM: só compara nomes que começam igual. Sem isto seria
+    O(n×m) de difflib (430 × 3.370 ≈ 1,4 milhão de comparações)."""
+    return nome_norm[:4]
+
+
+def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = True):
+    """Acha pares provavelmente duplicados.
+
+    registros: lista de dicts {'ref': qualquer, 'nome': str, 'doc': str,
+               'origem': 'arquivo'|'banco'}
+    Retorna lista de dicts {'tipo','motivo','score','a','b'} ordenada por score
+    decrescente. `tipo` ∈ ja-cadastrado | documento | nome-exato | nome-parecido.
+    **ja-cadastrado** = arquivo × banco com mesmo documento E mesmo nome: não é
+    suspeita, é o cliente que já existe no destino (o chamador costuma só contar).
+
+    so_com_arquivo=True descarta pares banco×banco (duplicidade que já existia e
+    não foi introduzida por esta importação).
+    """
+    itens = []
+    for r in registros or []:
+        itens.append({
+            "ref": r.get("ref"),
+            "origem": r.get("origem", "arquivo"),
+            "nome_norm": normalizar_nome(r.get("nome")),
+            "doc": so_digitos(r.get("doc")),
+            "doc_ph": documento_placeholder(r.get("doc")),
+            "nome": r.get("nome"),
+        })
+
+    pares, vistos = [], set()
+
+    def _add(a, b, tipo, motivo, score):
+        if so_com_arquivo and a["origem"] == "banco" and b["origem"] == "banco":
+            return
+        chave = tuple(sorted((str(a["ref"]), str(b["ref"]))))
+        if chave in vistos:
+            return
+        vistos.add(chave)
+        pares.append({"tipo": tipo, "motivo": motivo, "score": round(score, 3),
+                      "a": a["ref"], "b": b["ref"],
+                      "nome_a": a["nome"], "nome_b": b["nome"]})
+
+    # 1) mesmo documento REAL (placeholder não identifica ninguém)
+    por_doc = {}
+    for it in itens:
+        if it["doc"] and not it["doc_ph"]:
+            por_doc.setdefault(it["doc"], []).append(it)
+    for doc, grupo in por_doc.items():
+        for i in range(len(grupo)):
+            for j in range(i + 1, len(grupo)):
+                a, b = grupo[i], grupo[j]
+                # Mesmo documento E mesmo nome, vindo de lados diferentes
+                # (arquivo × banco), NÃO é duplicata suspeita: é o cliente que já
+                # está cadastrado no destino. Sem esta distinção, reimportar um
+                # arquivo já importado gera centenas de falsos positivos e o
+                # sinal de verdade (mesmo doc com nomes DIFERENTES) se perde.
+                if (a["origem"] != b["origem"]
+                        and a["nome_norm"] and a["nome_norm"] == b["nome_norm"]):
+                    _add(a, b, "ja-cadastrado",
+                         "já cadastrado no destino (mesmo documento e nome)", 1.0)
+                else:
+                    motivo = f"mesmo CPF/CNPJ ({doc})"
+                    if a["nome_norm"] != b["nome_norm"]:
+                        motivo += " com NOMES DIFERENTES"
+                    _add(a, b, "documento", motivo, 1.0)
+
+    # 2) nome idêntico após normalização
+    por_nome = {}
+    for it in itens:
+        if it["nome_norm"]:
+            por_nome.setdefault(it["nome_norm"], []).append(it)
+    for nome, grupo in por_nome.items():
+        for i in range(len(grupo)):
+            for j in range(i + 1, len(grupo)):
+                a, b = grupo[i], grupo[j]
+                if a["doc"] and b["doc"] and a["doc"] != b["doc"] \
+                        and not (a["doc_ph"] or b["doc_ph"]):
+                    motivo = "nome idêntico, mas CPF/CNPJ diferentes (matriz/filial?)"
+                else:
+                    motivo = "nome idêntico"
+                _add(a, b, "nome-exato", motivo, 1.0)
+
+    # 3) nome PARECIDO — só dentro do mesmo bloco (performance)
+    blocos = {}
+    for it in itens:
+        if it["nome_norm"]:
+            blocos.setdefault(_bloco(it["nome_norm"]), []).append(it)
+    for _b, grupo in blocos.items():
+        if len(grupo) < 2 or len(grupo) > 400:      # bloco gigante: não vale o custo
+            continue
+        for i in range(len(grupo)):
+            for j in range(i + 1, len(grupo)):
+                a, b = grupo[i], grupo[j]
+                if a["nome_norm"] == b["nome_norm"]:
+                    continue                        # já tratado no passo 2
+                s = similaridade(a["nome_norm"], b["nome_norm"])
+                if s >= limiar:
+                    suf = " (ambos sem documento válido)" if (a["doc_ph"] and b["doc_ph"]) else ""
+                    _add(a, b, "nome-parecido",
+                         f"nomes {int(s * 100)}% parecidos{suf}", s)
+
+    pares.sort(key=lambda p: (-p["score"], str(p["a"])))
+    return pares
+
+
 def campos_nao_mapeados(mapping: dict, campos_obrigatorios) -> list:
     """Retorna os campos obrigatórios que NÃO estão no mapping (ordem de entrada)."""
     return [c for c in campos_obrigatorios if c not in mapping]

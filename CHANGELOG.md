@@ -8,6 +8,32 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [Não liberado] — versão a definir
+
+### Dedupe inteligente de clientes (aponta, nunca funde)
+O dedup existente casava apenas por **documento exato** — e a base real tem vários
+clientes com CPF `00000000000`, que não identifica ninguém. Agora a importação de
+Clientes analisa duplicidade provável antes de inserir e **relata**.
+- Funções puras em `mi_validacao.py`: `normalizar_nome` (sem acento, maiúsculo, sem
+  pontuação e sem sufixo societário — LTDA/ME/EPP/S.A./EIRELI), `documento_placeholder`
+  (documento vazio ou de dígitos repetidos), `similaridade` (via `difflib`, sem
+  dependência nova) e `detectar_duplicados`.
+- Quatro classificações: **ja-cadastrado** (arquivo × banco com mesmo documento e nome
+  — informativo, não é suspeita), **documento** (mesmo CPF/CNPJ, destacando quando os
+  nomes divergem), **nome-exato** (com aviso de possível matriz/filial quando os
+  documentos diferem) e **nome-parecido** (similaridade ≥ 88%).
+- **Nunca funde registros:** juntar clientes é irreversível e arrisca unir empresas
+  distintas. A saída vai para o log (amostra), o relatório HTML e um
+  `DUPLICADOS_CLIENTES_<ts>.csv` para conferência no Excel.
+- **Desempenho:** blocagem por prefixo do nome evita o O(n×m) de comparações — 3.800
+  registros (430 do arquivo × 3.370 do banco) processados em ~1 s.
+- Medido na base real: **479 suspeitas** reais, separadas de 365 "já cadastrado".
+  Achados concretos incluem o mesmo CNPJ sob nomes diferentes
+  (`FAZENDA INHUMAS` × `SIERENTZ AGRO BRASIL LTDA`) — padrão de fazenda × empresa que
+  só quem conhece a base sabe julgar. 31 testes novos.
+
+---
+
 ## [3.8.0] — 2026-07-18
 
 ### Relatório HTML de fechamento

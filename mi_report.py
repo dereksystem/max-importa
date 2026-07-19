@@ -177,6 +177,19 @@ def _gerar_html(win, prefixo: str, nomes_erro: list) -> str:
 
         corpo = [cards, graf, _secoes_alertas(win)]
 
+        dups = getattr(win, "_dup_clientes", None) or []
+        if dups:
+            linhas = [(d.get("tipo", ""), d.get("motivo", ""),
+                       f'{d.get("a", "")} — {d.get("nome_a", "") or ""}',
+                       f'{d.get("b", "")} — {d.get("nome_b", "") or ""}') for d in dups]
+            corpo.append('<section><h2>👥 Clientes possivelmente duplicados '
+                         f'({len(dups)})</h2>'
+                         + _tabela(["Tipo", "Motivo", "Registro A", "Registro B"], linhas)
+                         + '<div class="nota">Detecção por documento, nome idêntico e '
+                           'nome parecido. <strong>Nada foi fundido</strong> — juntar '
+                           'clientes é irreversível, então a decisão fica com quem '
+                           'conhece a base.</div></section>')
+
         nao_enc = getattr(win, "nao_encontrados", None) or []
         if nao_enc:
             linhas = [(i.get("_linha", ""), i.get("_cpfcnpj", "")) for i in nao_enc]
@@ -361,6 +374,34 @@ def _exportar_resultado(win, prefixo: str, nomes_erro: list) -> None:
             win._log(f"⚠️ Falha ao exportar resultado CSV/JSON: {str(e)[:150]}")
         except Exception:
             pass
+
+
+def _exportar_duplicados(win, pares: list) -> str:
+    """Grava DUPLICADOS_CLIENTES_<ts>.csv com os pares suspeitos, para conferência
+    no Excel. Best-effort: nunca interrompe a importação."""
+    if not pares:
+        return ""
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = _get_log_dir()
+        os.makedirs(log_dir, exist_ok=True)
+        caminho = os.path.join(log_dir, f"DUPLICADOS_CLIENTES_{ts}.csv")
+        with open(caminho, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["tipo", "motivo", "semelhanca", "registro_a", "nome_a",
+                        "registro_b", "nome_b"])
+            for p in pares:
+                w.writerow([p.get("tipo", ""), p.get("motivo", ""),
+                            p.get("score", ""), p.get("a", ""), p.get("nome_a", ""),
+                            p.get("b", ""), p.get("nome_b", "")])
+        win._log(f"🧾 Duplicados (CSV) salvos: {os.path.basename(caminho)}")
+        return caminho
+    except Exception as e:
+        try:
+            win._log(f"⚠️ Falha ao exportar duplicados: {str(e)[:150]}")
+        except Exception:
+            pass
+        return ""
 
 
 def _pos_importacao(win, prefixo: str, nomes_erro: list, houve_erros: bool) -> None:

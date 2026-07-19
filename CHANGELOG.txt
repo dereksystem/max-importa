@@ -769,4 +769,20 @@ CORRECOES
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
-- (descrever aqui a próxima alteração)
+DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
+- O dedup casava so por DOCUMENTO EXATO, e a base real tem
+  varios clientes com CPF 00000000000 (nao identifica ninguem).
+- Funcoes puras em mi_validacao.py: normalizar_nome (sem acento,
+  maiusculo, sem pontuacao, sem sufixo LTDA/ME/EPP/S.A.),
+  documento_placeholder, similaridade (difflib) e
+  detectar_duplicados.
+- 4 classificacoes: ja-cadastrado (arquivo x banco com mesmo doc
+  e nome - informativo), documento (mesmo CPF/CNPJ, destacando
+  nomes divergentes), nome-exato (avisa matriz/filial) e
+  nome-parecido (>= 88%).
+- NUNCA funde: juntar clientes e irreversivel. Saida vai para o
+  log, o relatorio HTML e DUPLICADOS_CLIENTES_<ts>.csv.
+- Blocagem por prefixo evita O(n x m): 3.800 registros em ~1s.
+- Real: 479 suspeitas separadas de 365 "ja cadastrado"; achou o
+  mesmo CNPJ sob nomes diferentes (FAZENDA INHUMAS x SIERENTZ
+  AGRO BRASIL LTDA). 31 testes novos.

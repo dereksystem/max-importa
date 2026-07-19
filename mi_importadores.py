@@ -14,7 +14,7 @@ import pandas as pd
 from tkinter import messagebox
 
 from decimal import Decimal
-from mi_report import _pos_importacao
+from mi_report import _pos_importacao, _exportar_duplicados
 from mi_db import MapeamentoDBMixin
 import mi_validacao as val   # regras de negócio puras (CPF/CNPJ, e-mail, faixas)
 
@@ -510,6 +510,67 @@ class ClientesImportMixin:
             return 0
         return None
 
+    # ── Dedupe: aponta duplicados PROVÁVEIS antes de inserir ────────────────
+    # Nunca funde nada: só relata para conferência. O dedup por documento exato
+    # não pega o caso real da base — vários clientes com CPF '00000000000', que
+    # não identifica ninguém — nem variações de grafia do mesmo nome.
+    def _analisar_duplicados(self, cursor):
+        """Compara os clientes do ARQUIVO entre si e contra os já cadastrados no
+        DESTINO. Loga amostra, contabiliza alerta e devolve os pares suspeitos."""
+        try:
+            registros = []
+            for idx, row in self.df.iterrows():
+                registros.append({
+                    "ref": f"arquivo:linha {idx + 2}",
+                    "origem": "arquivo",
+                    "nome": self._get_str(row, "cliNome"),
+                    "doc": self._get_str(row, "cliCpfCgc"),
+                })
+            try:
+                cursor.execute("SELECT cliId, cliNome, cliCpfCgc FROM cliente")
+                for cid, nome, doc in cursor.fetchall():
+                    registros.append({"ref": f"banco:cliId {cid}", "origem": "banco",
+                                      "nome": nome, "doc": doc})
+            except Exception:
+                pass          # sem acesso ao destino: compara ao menos o arquivo
+
+            todos = val.detectar_duplicados(registros)
+            # "já cadastrado" é informativo (o cliente existe no destino), não
+            # suspeita — conta em uma linha e sai do relatório detalhado.
+            ja = [p for p in todos if p["tipo"] == "ja-cadastrado"]
+            pares = [p for p in todos if p["tipo"] != "ja-cadastrado"]
+            if ja:
+                self._log(f"ℹ️  Dedupe: {len(ja)} cliente(s) do arquivo já constam no "
+                          f"destino com mesmo documento e nome.")
+            if not pares:
+                self._log("✅ Dedupe: nenhum cliente duplicado suspeito encontrado.")
+                return []
+
+            por_tipo = {}
+            for p in pares:
+                por_tipo[p["tipo"]] = por_tipo.get(p["tipo"], 0) + 1
+            det = ", ".join(f"{k}={v}" for k, v in sorted(por_tipo.items()))
+            self._log(f"⚠️  Dedupe: {len(pares)} par(es) de clientes provavelmente "
+                      f"duplicados ({det}) — NADA foi fundido, apenas sinalizado.")
+            for p in pares[:8]:
+                self._log(f"    • {p['a']} ↔ {p['b']} — {p['motivo']} "
+                          f"[{p['nome_a']} / {p['nome_b']}]")
+            if len(pares) > 8:
+                self._log(f"    … e mais {len(pares) - 8} par(es); "
+                          f"lista completa no CSV e no relatório HTML.")
+            # Registra a CONTAGEM direto (um alerta por par inundaria o log; a
+            # amostra já foi impressa acima e a lista completa vai no CSV).
+            cont = getattr(self, "_alertas_regras", None)
+            if cont is None:
+                cont = self._alertas_regras = {}
+            cont["clientes duplicados (provável)"] = len(pares)
+            self._dup_clientes = pares
+            _exportar_duplicados(self, pares)
+            return pares
+        except Exception as e:
+            self._log(f"⚠️  Dedupe não pôde ser executado: {str(e)[:150]}")
+            return []
+
     def _inserir_clientes(self):
         total    = len(self.df)
         sucessos = 0
@@ -520,6 +581,7 @@ class ClientesImportMixin:
         emp_id = self._get_emp_id(cursor)
 
         self._log(f"Iniciando INSERT clientes — {total} registros | empId={emp_id}")
+        self._analisar_duplicados(cursor)
 
         nomes_erro = []       # nomes dos clientes que deram erro na importacao
 
