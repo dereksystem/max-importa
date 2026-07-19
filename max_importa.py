@@ -108,6 +108,10 @@ from mi_validacao import (
 # UTILITÁRIO: Centralizar janela
 # ─────────────────────────────────────────────────────────────────────────────
 def centralizar(janela, largura, altura):
+    # Telas hospedadas no shell são CTkFrame, não janelas: não têm geometry().
+    # Em vez de espalhar `if` pelos chamadores, a função vira no-op nesse caso.
+    if not hasattr(janela, "geometry"):
+        return
     janela.update_idletasks()
     sw = janela.winfo_screenwidth()
     sh = janela.winfo_screenheight()
@@ -652,7 +656,7 @@ class JanelaLogin(ctk.CTk):
             self.current_db = db
             self.lbl_status.configure(text=f"Conectado: {db}", text_color=TC_STATUS_OK)
             self.withdraw()
-            JanelaMenu(self).mainloop_child()
+            JanelaShell(self).mainloop_child()
         except Exception as e:
             messagebox.showerror("Erro", str(e), parent=self)
 
@@ -867,7 +871,283 @@ class JanelaMenu(ctk.CTkToplevel):
 # ─────────────────────────────────────────────────────────────────────────────
 # JANELA 3 – Importação de Produtos
 # ─────────────────────────────────────────────────────────────────────────────
-class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ctk.CTkToplevel):
+# ═══════════════════════════════════════════════════════════════════════════
+# SHELL — janela única com sidebar fixa (layout 1b aprovado), FASE 1.
+#
+# Antes: cada módulo era um CTkToplevel próprio e a navegação acontecia por
+# withdraw()/deiconify() entre janelas. Agora existe UMA janela; os módulos são
+# frames montados na área de conteúdo.
+#
+# Para não reescrever as ~2.800 linhas das telas nesta fase, `TelaHospedada`
+# absorve as chamadas que só existem em janela (title/resizable/protocol/...).
+# Assim o código das telas segue idêntico — `self.title(...)` passa a alimentar o
+# cabeçalho do shell — e a mudança fica contida na camada de navegação.
+# ═══════════════════════════════════════════════════════════════════════════
+class TelaHospedada:
+    """Compatibiliza um CTkFrame com o código escrito para CTkToplevel."""
+
+    def title(self, texto=None):
+        if texto is None:
+            return getattr(self, "_titulo_tela", "")
+        self._titulo_tela = texto
+        shell = getattr(self, "menu_win", None)
+        if shell is not None and hasattr(shell, "definir_titulo"):
+            shell.definir_titulo(texto)
+        return None
+
+    # Sem efeito num frame — a janela é do shell.
+    def resizable(self, *a, **k):
+        return None
+
+    def protocol(self, *a, **k):
+        return None
+
+    def iconbitmap(self, *a, **k):
+        return None
+
+    def wm_attributes(self, *a, **k):
+        return None
+
+    def attributes(self, *a, **k):
+        return None
+
+    def withdraw(self):
+        return None
+
+    def deiconify(self):
+        return None
+
+    def transient(self, *a, **k):
+        return None
+
+    def grab_set(self):
+        return None
+
+    def grab_release(self):
+        return None
+
+
+class JanelaShell(ctk.CTkToplevel):
+    """Janela única: sidebar fixa à esquerda + cabeçalho + área de conteúdo.
+    Substitui o antigo JanelaMenu, preservando TODAS as suas ações."""
+
+    LARG_SIDEBAR = 236
+
+    # (chave, rótulo, ícone textual, grupo, aceita Inserir/Atualizar)
+    ITENS = [
+        ("produtos",   "Produtos",    "📦", "IMPORTAR",    True),
+        ("clientes",   "Clientes",    "👥", "IMPORTAR",    True),
+        ("financeiro", "Financeiro",  "💰", "IMPORTAR",    False),
+        ("migracao",   "Migração",    "🔄", "FERRAMENTAS", False),
+    ]
+
+    def __init__(self, login_win):
+        super().__init__(login_win)
+        self.login_win = login_win
+        self.conn = login_win.conn
+        self.title(f"Max_Importa  v{APP_VERSION}")
+        self.resizable(True, True)
+        centralizar(self, 1180, 780)
+        self.protocol("WM_DELETE_WINDOW", self._fechar)
+
+        self._tela_atual = None
+        self._chave_atual = None
+        self._operacao = "INSERIR (INSERT)"
+        self._nav_btns = {}
+
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self._build_sidebar()
+        self._build_area()
+        self.ir_para("inicio")
+
+    # ── Sidebar ────────────────────────────────────────────────────────────
+    def _build_sidebar(self):
+        sb = ctk.CTkFrame(self, width=self.LARG_SIDEBAR, corner_radius=0,
+                          fg_color=("#F7F8FA", "#1B1E24"))
+        sb.grid(row=0, column=0, sticky="nsw")
+        sb.grid_propagate(False)
+        sb.grid_rowconfigure(90, weight=1)      # empurra o rodapé p/ baixo
+
+        topo = ctk.CTkFrame(sb, fg_color="transparent")
+        topo.grid(row=0, column=0, sticky="ew", padx=18, pady=(20, 14))
+        _logo_label(topo, height=34).pack(anchor="w")
+
+        linha = 1
+        grupo_atual = None
+        for chave, rotulo, icone, grupo, _op in self.ITENS:
+            if grupo != grupo_atual:
+                grupo_atual = grupo
+                ctk.CTkLabel(sb, text=grupo, font=ctk.CTkFont(size=10, weight="bold"),
+                             text_color=("#A2A9B2", "#6B7480"),
+                             anchor="w").grid(row=linha, column=0, sticky="ew",
+                                              padx=18, pady=(14, 4))
+                linha += 1
+            b = ctk.CTkButton(
+                sb, text=f"  {icone}   {rotulo}", anchor="w", height=38,
+                corner_radius=8, font=ctk.CTkFont(size=13),
+                fg_color="transparent", hover_color=("#EAECEF", "#242832"),
+                text_color=("#5B6470", "#C7CCD4"),
+                command=lambda c=chave: self.ir_para(c))
+            b.grid(row=linha, column=0, sticky="ew", padx=10, pady=1)
+            self._nav_btns[chave] = b
+            linha += 1
+
+        # Ferramentas auxiliares (antes no menu principal)
+        for rotulo, icone, cmd in (("Pasta de logs", "⚙", self._configurar_logs),
+                                   ("Alternar tema", "🌗", self._toggle_tema),
+                                   ("Sair para o login", "↩", self._fechar)):
+            ctk.CTkButton(sb, text=f"  {icone}   {rotulo}", anchor="w", height=34,
+                          corner_radius=8, font=ctk.CTkFont(size=12),
+                          fg_color="transparent", hover_color=("#EAECEF", "#242832"),
+                          text_color=("#8A9099", "#8A9099"),
+                          command=cmd).grid(row=linha, column=0, sticky="ew",
+                                            padx=10, pady=1)
+            linha += 1
+
+        # Rodapé: status da conexão (bolinha + banco), como no layout aprovado
+        rod = ctk.CTkFrame(sb, fg_color="transparent")
+        rod.grid(row=99, column=0, sticky="ew", padx=18, pady=(10, 16))
+        ctk.CTkLabel(rod, text="●", font=ctk.CTkFont(size=13),
+                     text_color="#2E9E6B").pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(rod, text=getattr(self.login_win, "current_db", "") or "—",
+                     font=ctk.CTkFont(size=11),
+                     text_color=("#5B6470", "#C7CCD4")).pack(side="left")
+
+    # ── Cabeçalho + conteúdo ───────────────────────────────────────────────
+    def _build_area(self):
+        area = ctk.CTkFrame(self, fg_color=("#E9EBEF", "#16181C"), corner_radius=0)
+        area.grid(row=0, column=1, sticky="nsew")
+        area.grid_rowconfigure(1, weight=1)
+        area.grid_columnconfigure(0, weight=1)
+
+        cab = ctk.CTkFrame(area, fg_color="transparent")
+        cab.grid(row=0, column=0, sticky="ew", padx=24, pady=(18, 6))
+        esq = ctk.CTkFrame(cab, fg_color="transparent")
+        esq.pack(side="left", anchor="w")
+        self.lbl_breadcrumb = ctk.CTkLabel(
+            esq, text="MAX_IMPORTA", font=ctk.CTkFont(size=10, weight="bold"),
+            text_color=("#A2A9B2", "#6B7480"), anchor="w")
+        self.lbl_breadcrumb.pack(anchor="w")
+        self.lbl_titulo = ctk.CTkLabel(
+            esq, text="Início", font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=TC_TEXT_MAIN, anchor="w")
+        self.lbl_titulo.pack(anchor="w")
+
+        # Pílula Inserir / Atualizar — só nas telas que aceitam as duas operações
+        self.seg_operacao = ctk.CTkSegmentedButton(
+            cab, values=["Inserir", "Atualizar"], command=self._trocar_operacao,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            selected_color=MD_RED, selected_hover_color=MD_RED_HOV)
+        self.seg_operacao.set("Inserir")
+
+        self.conteudo = ctk.CTkFrame(area, fg_color="transparent")
+        self.conteudo.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 14))
+        self.conteudo.grid_rowconfigure(0, weight=1)
+        self.conteudo.grid_columnconfigure(0, weight=1)
+
+    def definir_titulo(self, texto):
+        """Recebe o que a tela passaria para title() e mostra no cabeçalho."""
+        limpo = str(texto).replace("Max_Importa", "").lstrip(" –-—")
+        limpo = re.sub(r"\s*v\d+\.\d+\.\d+\s*$", "", limpo).strip()
+        if hasattr(self, "lbl_titulo"):
+            self.lbl_titulo.configure(text=limpo or "Início")
+
+    # ── Navegação ──────────────────────────────────────────────────────────
+    def _aceita_operacao(self, chave):
+        return next((op for c, _r, _i, _g, op in self.ITENS if c == chave), False)
+
+    def _trocar_operacao(self, valor):
+        self._operacao = ("INSERIR (INSERT)" if valor == "Inserir"
+                          else "ATUALIZAR (UPDATE)")
+        if self._chave_atual in ("produtos", "clientes"):
+            self.ir_para(self._chave_atual, manter_operacao=True)
+
+    def ir_para(self, chave, manter_operacao=False):
+        """Troca o conteúdo. Destrói a tela anterior (cada uma reconstrói seu
+        estado do zero, como acontecia quando eram janelas separadas)."""
+        anterior = self._tela_atual
+        if anterior is not None:
+            try:
+                if anterior.winfo_exists():
+                    anterior.destroy()
+            except Exception:
+                pass
+        self._tela_atual = None
+        self._chave_atual = chave
+
+        for c, b in self._nav_btns.items():
+            ativo = (c == chave)
+            b.configure(fg_color=MD_RED if ativo else "transparent",
+                        text_color="#FFFFFF" if ativo else ("#5B6470", "#C7CCD4"))
+
+        if self._aceita_operacao(chave):
+            self.seg_operacao.pack(side="right", anchor="e")
+            if not manter_operacao:
+                self.seg_operacao.set("Inserir")
+                self._operacao = "INSERIR (INSERT)"
+        else:
+            self.seg_operacao.pack_forget()
+
+        tela = None
+        if chave == "inicio":
+            tela = self._tela_inicio()
+        elif chave == "produtos":
+            tela = JanelaProdutos(self, operacao_inicial=self._operacao)
+        elif chave == "clientes":
+            tela = JanelaClientes(self, operacao_inicial=self._operacao)
+        elif chave == "financeiro":
+            tela = JanelaFinanceiro(self)
+        elif chave == "migracao":
+            tela = JanelaMigracao(self)
+
+        if tela is not None:
+            tela.grid(row=0, column=0, sticky="nsew")
+            self._tela_atual = tela
+        if chave == "inicio":
+            self.definir_titulo("Início")
+
+    def _tela_inicio(self):
+        """Painel inicial: o que a antiga tela de menu explicava, sem os botões
+        (a navegação agora vive na sidebar)."""
+        f = ctk.CTkFrame(self.conteudo, fg_color=("#FFFFFF", "#1B1E24"),
+                         corner_radius=12)
+        ctk.CTkLabel(f, text="Selecione um módulo na barra lateral",
+                     font=ctk.CTkFont(size=17, weight="bold"),
+                     text_color=TC_TEXT_MAIN).pack(padx=28, pady=(30, 6), anchor="w")
+        ctk.CTkLabel(
+            f, justify="left", anchor="w", wraplength=760,
+            font=ctk.CTkFont(size=13), text_color=MD_GRAY,
+            text=("📦 Produtos · 👥 Clientes/Fornecedores · 💰 Financeiro — importam "
+                  "planilhas .xlsx e arquivos .txt/.csv.\n"
+                  "🔄 Migração — copia dados de um banco MaxData para outro.\n\n"
+                  "Em Produtos e Clientes, use o seletor Inserir / Atualizar no topo. "
+                  "Nas telas de importação há a opção “Simular (não grava)”, que mostra "
+                  "o resultado sem tocar no banco.")
+        ).pack(padx=28, pady=(0, 24), anchor="w")
+        ctk.CTkLabel(f, text=f"Banco conectado: {getattr(self.login_win, 'current_db', '—')}",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=TC_STATUS_OK).pack(padx=28, pady=(0, 28), anchor="w")
+        return f
+
+    # ── Ações herdadas do antigo menu ──────────────────────────────────────
+    def _toggle_tema(self):
+        novo = "dark" if ctk.get_appearance_mode().lower() == "light" else "light"
+        ctk.set_appearance_mode(novo)
+
+    def _configurar_logs(self):
+        JanelaMenu._configurar_logs(self)
+
+    def mainloop_child(self):
+        self.mainloop()
+
+    def _fechar(self):
+        self.login_win.deiconify()
+        self.destroy()
+
+
+class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
+                     TelaHospedada, ctk.CTkFrame):
 
     # Campos obrigatorios — validados antes de iniciar a importacao
     CAMPOS_OBRIGATORIOS = {"proDescricao", "proCodCst2", "proCodigo", "proUn", "ncmCodigoNCM"}
@@ -910,7 +1190,9 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
     ]
 
     def __init__(self, menu_win: JanelaMenu, operacao_inicial="ATUALIZAR (UPDATE)"):
-        super().__init__(menu_win)
+        # Hospedada no shell: o master é a ÁREA DE CONTEÚDO, mas menu_win
+        # segue sendo o shell (login_win, navegação, título do cabeçalho).
+        super().__init__(getattr(menu_win, "conteudo", menu_win))
         self.menu_win = menu_win
         self.login_win = menu_win.login_win
         self.conn = self.login_win.conn
@@ -1296,7 +1578,8 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
 # ─────────────────────────────────────────────────────────────────────────────
 # JANELA 4 – Importação de Clientes / Fornecedores
 # ─────────────────────────────────────────────────────────────────────────────
-class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ctk.CTkToplevel):
+class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
+                     TelaHospedada, ctk.CTkFrame):
 
     CAMPOS_OBRIGATORIOS = {
         "cliCpfCgc", "cliFatBairro", "cliFatCep",
@@ -1333,7 +1616,9 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
     ]
 
     def __init__(self, menu_win, operacao_inicial="ATUALIZAR (UPDATE)"):
-        super().__init__(menu_win)
+        # Hospedada no shell: o master é a ÁREA DE CONTEÚDO, mas menu_win
+        # segue sendo o shell (login_win, navegação, título do cabeçalho).
+        super().__init__(getattr(menu_win, "conteudo", menu_win))
         self.menu_win  = menu_win
         self.login_win = menu_win.login_win
         self.conn      = self.login_win.conn
@@ -1856,7 +2141,8 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
 # ─────────────────────────────────────────────────────────────────────────────
 # JANELA 5 – Importação Financeiro (vendaPgto) — somente INSERT
 # ─────────────────────────────────────────────────────────────────────────────
-class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin, ctk.CTkToplevel):
+class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin,
+                       TelaHospedada, ctk.CTkFrame):
 
     CAMPOS_OBRIGATORIOS = {
         "cliCpfCgc", "pgtCliNome",
@@ -1886,7 +2172,9 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
     ]
 
     def __init__(self, menu_win):
-        super().__init__(menu_win)
+        # Hospedada no shell: o master é a ÁREA DE CONTEÚDO, mas menu_win
+        # segue sendo o shell (login_win, navegação, título do cabeçalho).
+        super().__init__(getattr(menu_win, "conteudo", menu_win))
         self.menu_win  = menu_win
         self.login_win = menu_win.login_win
         self.conn      = self.login_win.conn
@@ -2301,7 +2589,7 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
 # ─────────────────────────────────────────────────────────────────────────────
 # JANELA 6 – Migração entre Bancos MaxData (banco -> banco)
 # ─────────────────────────────────────────────────────────────────────────────
-class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
+class JanelaMigracao(MigracaoMixin, CancelavelMixin, TelaHospedada, ctk.CTkFrame):
     """Migra dados entre dois bancos MaxData da MESMA instancia SQL, reutilizando
     a logica de INSERT dos importadores (unidade automatica, corte de tamanho,
     etc.). Mantem os IDs (proId/cliId) e pula os que ja existirem no destino."""
@@ -2328,7 +2616,9 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, ctk.CTkToplevel):
     }
 
     def __init__(self, menu_win):
-        super().__init__(menu_win)
+        # Hospedada no shell: o master é a ÁREA DE CONTEÚDO, mas menu_win
+        # segue sendo o shell (login_win, navegação, título do cabeçalho).
+        super().__init__(getattr(menu_win, "conteudo", menu_win))
         self.menu_win      = menu_win
         self.login_win     = menu_win.login_win
         self.base_conn_str = self.login_win.base_conn_str

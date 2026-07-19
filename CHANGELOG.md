@@ -10,6 +10,30 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Interface: janela única com sidebar (layout 1b aprovado) — FASE 1
+Primeira etapa do redesign aprovado em `layout-1b-aprovado/`. **Só a navegação mudou;
+o conteúdo das telas continua idêntico** (o visual de cada tela é a fase 2).
+- Antes cada módulo era um `CTkToplevel` próprio, e navegar significava `withdraw()`
+  numa janela e `deiconify()` em outra. Agora existe **uma janela** (`JanelaShell`):
+  sidebar fixa de 236 px à esquerda, cabeçalho com breadcrumb e título, e os módulos
+  montados como frames na área de conteúdo.
+- **Sidebar** com grupos "IMPORTAR" (Produtos, Clientes, Financeiro) e "FERRAMENTAS"
+  (Migração, Pasta de logs, Alternar tema, Sair), item ativo em `#CC0000` e, no rodapé,
+  o status de conexão (bolinha verde + banco) — como especificado no layout.
+- **Pílula Inserir / Atualizar** no cabeçalho das telas que aceitam as duas operações,
+  substituindo os botões separados do antigo menu (nenhuma função foi perdida).
+- **Como as ~2.800 linhas de tela não precisaram ser reescritas:** o mixin
+  `TelaHospedada` absorve as chamadas que só existem em janela
+  (`title`/`resizable`/`protocol`/`withdraw`/`deiconify`/`grab_set`…). O código das
+  telas segue chamando `self.title(...)`, que agora alimenta o cabeçalho do shell.
+  `centralizar()` virou no-op quando recebe um frame.
+- As 4 telas passaram de `CTkToplevel` para `TelaHospedada + CTkFrame`, montadas na
+  área de conteúdo (`master = shell.conteudo`), com `menu_win` ainda apontando para o
+  shell — o que preserva `login_win`, `conn` e o fluxo de fechamento.
+- ⚠️ Os 243 testes **não cobrem a GUI** (usam `Janela*.__new__` com stubs): eles
+  garantem que a lógica seguiu intacta, mas a verificação da interface foi manual —
+  as 5 telas foram montadas e inspecionadas uma a uma.
+
 ### Dry-run (simulação) também em Produtos e Clientes
 A caixa **"🔎 Simular (não grava)"**, que existia só no Financeiro, passa a valer nas
 três telas — incluindo os modos de UPDATE.

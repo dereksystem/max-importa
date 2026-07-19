@@ -769,6 +769,27 @@ CORRECOES
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+INTERFACE: JANELA UNICA COM SIDEBAR (layout 1b) - FASE 1
+- Primeira etapa do redesign aprovado em layout-1b-aprovado/.
+  SO A NAVEGACAO MUDOU; o conteudo das telas segue identico
+  (o visual de cada tela e a fase 2).
+- Antes cada modulo era um CTkToplevel e navegar era withdraw()
+  numa janela + deiconify() em outra. Agora ha UMA janela
+  (JanelaShell): sidebar fixa de 236px, cabecalho com breadcrumb
+  e titulo, e os modulos como frames na area de conteudo.
+- Sidebar com grupos IMPORTAR e FERRAMENTAS, item ativo em
+  #CC0000 e rodape com status de conexao (bolinha + banco).
+- Pilula Inserir/Atualizar no cabecalho das telas que aceitam as
+  duas operacoes (nenhuma funcao do menu antigo foi perdida).
+- As ~2.800 linhas de tela NAO foram reescritas: o mixin
+  TelaHospedada absorve title/resizable/protocol/withdraw/
+  deiconify/grab_set. self.title(...) passa a alimentar o
+  cabecalho do shell. centralizar() vira no-op com frame.
+- As 4 telas passaram de CTkToplevel para TelaHospedada+CTkFrame,
+  montadas em shell.conteudo, com menu_win apontando p/ o shell.
+- ATENCAO: os 243 testes NAO cobrem a GUI (usam __new__ + stubs).
+  Eles garantem a logica; a interface foi verificada manualmente.
+
 DRY-RUN (SIMULACAO) TAMBEM EM PRODUTOS E CLIENTES
 - A caixa "Simular (nao grava)", antes so no Financeiro, passa a
   valer nas 3 telas, inclusive nos modos de UPDATE.
