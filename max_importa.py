@@ -1080,6 +1080,12 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
                                         fg_color=MD_GRAY, hover_color=MD_GRAY_HOV,
                                         state="disabled", command=self._gerar_acerto_estoque)
         self.btn_acerto.pack(side="left", padx=(0, 12))
+        # Dry-run: simula tudo (lookup, conversão, validações) SEM gravar.
+        # Em simulação o acerto de estoque NÃO é gerado (ele gravaria no banco).
+        self.simular_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(bot, text="🔎 Simular (não grava)", variable=self.simular_var,
+                        font=ctk.CTkFont(size=12),
+                        onvalue=True, offvalue=False).pack(side="left", padx=(16, 0))
 
         # Botão Cancelar — habilita só durante a importação
         self._criar_btn_cancelar(bot, side="left", padx=(0, 12))
@@ -1206,6 +1212,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
             self._log("Validacao UPDATE OK.")
             self.btn_import.configure(state="disabled")
             self.progress.set(0)
+            self._dry_run = bool(self.simular_var.get())
             self._op_iniciada()
             threading.Thread(target=self._atualizar_produtos, daemon=True).start()
             return
@@ -1242,6 +1249,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
         self._log("Validacao OK — todos os campos obrigatorios preenchidos.")
         self.btn_import.configure(state="disabled")
         self.progress.set(0)
+        self._dry_run = bool(self.simular_var.get())
         self._op_iniciada()
         threading.Thread(target=self._inserir_produtos, daemon=True).start()
     # ── INSERT ────────────────────────────────────────────────────────────
@@ -1504,6 +1512,11 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
         ctk.CTkButton(bot, text="↩  Voltar ao Menu", height=52,
                        fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
                        command=self._fechar).pack(side="left")
+        # Dry-run: simula tudo (lookup, conversão, validações) SEM gravar.
+        self.simular_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(bot, text="🔎 Simular (não grava)", variable=self.simular_var,
+                        font=ctk.CTkFont(size=12),
+                        onvalue=True, offvalue=False).pack(side="left", padx=(16, 0))
 
         # Progresso e log
         self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
@@ -1727,6 +1740,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
         if is_insert:
             self.btn_import.configure(state="disabled")
             self.progress.set(0)
+            self._dry_run = bool(self.simular_var.get())
             self._op_iniciada()
             threading.Thread(target=self._inserir_clientes, daemon=True).start()
         else:
@@ -1744,6 +1758,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
             else:
                 self.btn_import.configure(state="disabled")
                 self.progress.set(0)
+                self._dry_run = bool(self.simular_var.get())
                 self._op_iniciada()
                 threading.Thread(target=self._atualizar_clientes, daemon=True).start()
 
@@ -1781,6 +1796,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin, ct
             dlg.destroy()
             self.btn_import.configure(state="disabled")
             self.progress.set(0)
+            self._dry_run = bool(self.simular_var.get())
             self._op_iniciada()
             threading.Thread(target=self._atualizar_clientes_por_cpf, daemon=True).start()
 

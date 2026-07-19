@@ -29,7 +29,7 @@ class ProdutosImportMixin:
     }
 
     def _inserir_produtos(self):
-        cursor   = self.conn.cursor()
+        cursor   = self._cursor()
         total    = len(self.df)
         sucessos = 0
         erros    = 0
@@ -203,7 +203,15 @@ class ProdutosImportMixin:
         except Exception as e:
             self._log(f"⚠️  Nao foi possivel reconfigurar IDENTITY: {e}")
 
-        self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos | ❌ {erros} erros")
+        _sim = bool(getattr(self, "_dry_run", False))
+        self._log(f"🔎 SIMULAÇÃO concluída — ✅ {sucessos} SERIAM inseridos | ❌ {erros} erros"
+                  if _sim else
+                  f"🎉 INSERT finalizado — ✅ {sucessos} inseridos | ❌ {erros} erros")
+        for _l in self._resumo_simulacao() + self._resumo_alertas():
+            self._log(_l)
+        if _sim:
+            self._log("ℹ️  Nada foi gravado (modo simulação). Desmarque "
+                      "'🔎 Simular' para importar de verdade.")
         self._ultimo_resultado = {"inseridos": sucessos, "pulados": 0, "erros": erros}
 
         # ── Aviso de unidades cadastradas automaticamente ────────────────
@@ -225,7 +233,7 @@ class ProdutosImportMixin:
 
     # ── UPDATE ────────────────────────────────────────────────────────────
     def _atualizar_produtos(self):
-        cursor   = self.conn.cursor()
+        cursor   = self._cursor()
         total    = len(self.df)
         sucessos = 0
         erros    = 0
@@ -361,7 +369,12 @@ class ProdutosImportMixin:
 
             self._set_progresso(idx + 1, total)
 
-        self._log(f"🎉 UPDATE finalizado — ✅ {sucessos} atualizados | ❌ {erros} erros")
+        _sim = bool(getattr(self, "_dry_run", False))
+        self._log(f"🔎 SIMULAÇÃO concluída — ✅ {sucessos} SERIAM atualizados | ❌ {erros} erros"
+                  if _sim else
+                  f"🎉 UPDATE finalizado — ✅ {sucessos} atualizados | ❌ {erros} erros")
+        for _l in self._resumo_simulacao() + self._resumo_alertas():
+            self._log(_l)
 
         # ── Aviso de unidades cadastradas automaticamente ────────────────
         if uns_criadas_upd:
@@ -388,6 +401,8 @@ class ProdutosImportMixin:
             return
         if getattr(self, "_suprimir_acerto", False):
             return   # migracao entre bancos nao dispara o acerto por entidade
+        if getattr(self, "_dry_run", False):
+            return   # simulacao nao gera acerto de estoque (gravaria no banco)
         try:
             cur = self.conn.cursor()
             emp_id = self._get_emp_id(cur)
@@ -577,7 +592,7 @@ class ClientesImportMixin:
         erros    = 0
 
         # Cursor normal para DML (INSERT/SELECT com transação)
-        cursor = self.conn.cursor()
+        cursor = self._cursor()
         emp_id = self._get_emp_id(cursor)
 
         self._log(f"Iniciando INSERT clientes — {total} registros | empId={emp_id}")
@@ -618,7 +633,7 @@ class ClientesImportMixin:
         # ── Comandos DDL/admin em autocommit (DBCC e IDENTITY_INSERT) ────────
         # Precisam de autocommit para não serem afetados por rollback de DML
         self.conn.autocommit = True
-        cur_ddl = self.conn.cursor()
+        cur_ddl = self._cursor()
         try:
             if usar_identity:
                 # Consulta o MAX real da tabela para reajustar o seed corretamente.
@@ -647,7 +662,7 @@ class ClientesImportMixin:
 
         # Volta ao modo transacional para os INSERTs
         self.conn.autocommit = False
-        cursor = self.conn.cursor()
+        cursor = self._cursor()
 
         # Monta dict idx -> cliId do arquivo
         id_map = {}
@@ -813,7 +828,7 @@ class ClientesImportMixin:
                 if usar_identity:
                     try:
                         self.conn.autocommit = True
-                        cur_re = self.conn.cursor()
+                        cur_re = self._cursor()
                         cur_re.execute("SELECT ISNULL(MAX(cliId), 0) FROM cliente")
                         max_re = cur_re.fetchone()[0]
                         seed_re = max(max_re, 10)
@@ -827,7 +842,7 @@ class ClientesImportMixin:
 
         # Desliga IDENTITY_INSERT e reajusta seed — em autocommit
         self.conn.autocommit = True
-        cur_fim = self.conn.cursor()
+        cur_fim = self._cursor()
         try:
             if not usar_identity:
                 cur_fim.execute("SET IDENTITY_INSERT cliente OFF")
@@ -844,7 +859,15 @@ class ClientesImportMixin:
         pulados = len(self.cliids_ja_existentes)
         if pulados:
             self._log(f"ℹ️  {pulados} cliId ja existentes foram pulados (use UPDATE para atualiza-los).")
-        self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos | ⏭️ {pulados} pulados | ❌ {erros} erros")
+        _sim = bool(getattr(self, "_dry_run", False))
+        self._log(f"🔎 SIMULAÇÃO concluída — ✅ {sucessos} SERIAM inseridos | ⏭️ {pulados} pulados | ❌ {erros} erros"
+                  if _sim else
+                  f"🎉 INSERT finalizado — ✅ {sucessos} inseridos | ⏭️ {pulados} pulados | ❌ {erros} erros")
+        for _l in self._resumo_simulacao():
+            self._log(_l)
+        if _sim:
+            self._log("ℹ️  Nada foi gravado (modo simulação). Desmarque "
+                      "'🔎 Simular' para importar de verdade.")
         for _l in self._resumo_alertas():      # regras de negócio (CPF/CNPJ, e-mail)
             self._log(_l)
         self._ultimo_resultado = {"inseridos": sucessos, "pulados": pulados, "erros": erros}
@@ -855,7 +878,7 @@ class ClientesImportMixin:
     # ── Confirmação de UPDATE por CPF/CNPJ ───────────────────────────────
 
     def _atualizar_clientes_por_cpf(self):
-        cursor   = self.conn.cursor()
+        cursor   = self._cursor()
         total    = len(self.df)
         sucessos = 0
         erros    = 0
@@ -973,7 +996,7 @@ class ClientesImportMixin:
 
     # ── UPDATE clientes ───────────────────────────────────────────────────
     def _atualizar_clientes(self):
-        cursor   = self.conn.cursor()
+        cursor   = self._cursor()
         total    = len(self.df)
         sucessos = 0
         erros    = 0

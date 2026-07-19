@@ -10,6 +10,26 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Dry-run (simulação) também em Produtos e Clientes
+A caixa **"🔎 Simular (não grava)"**, que existia só no Financeiro, passa a valer nas
+três telas — incluindo os modos de UPDATE.
+- **Como é feito:** um **cursor simulado** (`mi_db._CursorSimulado`) encaminha as
+  leituras e descarta as escritas. A alternativa — espalhar `if dry_run` pelos ~200
+  comandos de INSERT de produtos/clientes — seria invasiva e, pior, um ponto esquecido
+  **gravaria no banco durante uma "simulação"**. Aqui a regra é única e central.
+- Cobre `INSERT`/`UPDATE`/`DELETE`, e também `DBCC CHECKIDENT` e `SET IDENTITY_INSERT`
+  — que **não são transacionais** e por isso jamais poderiam ser "desfeitos" por um
+  rollback. Era a razão de a simulação ter de ser *sem escrita*, e não *com rollback*.
+- O INSERT de produtos vem no mesmo comando que o `SELECT SCOPE_IDENTITY()`. Descartar
+  tudo fazia o worker abortar a linha com "SCOPE_IDENTITY retornou NULL" e reportar
+  erro inexistente; o cursor devolve um **id fictício** para o fluxo seguir.
+- Em simulação o **acerto de estoque não é gerado** (ele gravaria no banco) e o arquivo
+  não é renomeado. O resumo lista os comandos que **seriam** executados, por tabela.
+- Testes: 22 sem banco (inclusive `IF NOT EXISTS (...) INSERT`, que não começa com
+  INSERT) e 2 de integração que provam contagem inalterada em `produto`,
+  `produto_empresa`, `fabricante`, `grupoProd`, `subGrupoProd`, `produtoUn`,
+  `cliente`, `cliente_empresa` **e no `IDENT_CURRENT`**.
+
 ### Dedupe inteligente de clientes (aponta, nunca funde)
 O dedup existente casava apenas por **documento exato** — e a base real tem vários
 clientes com CPF `00000000000`, que não identifica ninguém. Agora a importação de

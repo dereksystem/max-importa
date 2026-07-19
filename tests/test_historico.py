@@ -110,7 +110,18 @@ def test_changelog_real_do_projeto_e_parseavel():
     assert len(vs) >= 30, "esperava dezenas de versões no CHANGELOG real"
     assert all(v["versao"] and v["data"] for v in vs)
     assert sum(len(v["blocos"]) for v in vs) >= 40
-    # a versão mais recente é a primeira (o changelog é decrescente)
+
+
+def test_topo_do_changelog_bate_com_app_version():
+    """Guard-rail de release: a versão LIBERADA mais recente do CHANGELOG tem de
+    ser a APP_VERSION — pega o esquecimento clássico de subir uma e não a outra.
+    O bloco '[Não liberado]' no topo é estado de trabalho válido (mudanças já
+    commitadas, versão ainda não fechada) e é ignorado."""
     from mi_config import APP_VERSION
-    assert vs[0]["versao"] == APP_VERSION, (
-        f"topo do CHANGELOG ({vs[0]['versao']}) != APP_VERSION ({APP_VERSION})")
+    vs = G.parse_changelog(G._CHANGELOG)
+    liberadas = [v for v in vs if not v["versao"].lower().startswith("não liberado")
+                 and not v["versao"].lower().startswith("nao liberado")]
+    assert liberadas, "nenhuma versão liberada no CHANGELOG"
+    assert liberadas[0]["versao"] == APP_VERSION, (
+        f"última versão liberada no CHANGELOG ({liberadas[0]['versao']}) "
+        f"!= APP_VERSION ({APP_VERSION})")

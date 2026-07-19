@@ -303,6 +303,59 @@ def test_import_financeiro_lookup_cliente(db_conn):
     assert any("QUALIDADE DOS DADOS" in l for l in obj_fin._resumo_alertas())
 
 
+def test_import_produtos_dry_run_nao_grava(db_conn):
+    """DRY-RUN de Produtos: nada pode ser gravado — nem em `produto`, nem nas
+    tabelas de REFERÊNCIA que o import cria sozinho (fabricante, grupoProd,
+    subGrupoProd, produtoUn), nem via DBCC/IDENTITY_INSERT."""
+    cur = db_conn.cursor()
+    def contar(t):
+        return cur.execute(f"SELECT COUNT(*) FROM [{t}]").fetchone()[0]
+    tabelas = ("produto", "produto_empresa", "fabricante", "grupoProd",
+               "subGrupoProd", "produtoUn")
+    antes = {t: contar(t) for t in tabelas}
+
+    tag = uuid.uuid4().hex[:8].upper()
+    # nomes inéditos: se o dry-run gravasse, criaria estas referências
+    linha = {"proId": "", "proDescricao": f"PROD DRY {tag}", "proCodCst2": "00",
+             "proCodigo": f"{tag}DRY", "proUn": f"U{tag[:3]}",
+             "ncmCodigoNCM": _ncm_existente(cur), "proVenda": "10,50",
+             "proEstoqueAtual": "5",
+             "fabNome": f"FABRICANTE DRY {tag}", "gdpNome": f"GRUPO DRY {tag}"}
+    df = pd.DataFrame([linha])
+    obj = _harness_produtos(db_conn, df, {c: c for c in linha.keys()})
+    obj._dry_run = True
+    obj._inserir_produtos()
+
+    depois = {t: contar(t) for t in tabelas}
+    assert depois == antes, f"dry-run gravou: {antes} → {depois}"
+    assert obj._ultimo_resultado["inseridos"] == 1     # 1 SERIA inserido
+    # e o resumo lista o que teria sido executado
+    assert any("SERIAM executados" in l for l in obj._resumo_simulacao())
+
+
+def test_import_clientes_dry_run_nao_grava(db_conn):
+    """DRY-RUN de Clientes: nem `cliente`/`cliente_empresa`, nem o reseed de
+    IDENTITY (DBCC CHECKIDENT) podem acontecer."""
+    cur = db_conn.cursor()
+    antes_cli = cur.execute("SELECT COUNT(*) FROM cliente").fetchone()[0]
+    antes_ce = cur.execute("SELECT COUNT(*) FROM cliente_empresa").fetchone()[0]
+    antes_ident = cur.execute(
+        "SELECT IDENT_CURRENT('cliente')").fetchone()[0]
+
+    tag = uuid.uuid4().hex[:8].upper()
+    linha = _linha_cliente(tag, "DRYRUN", "11222333000181")
+    df = pd.DataFrame([linha])
+    obj = _harness_clientes(db_conn, df, {c: c for c in linha.keys()})
+    obj._dry_run = True
+    obj._inserir_clientes()
+
+    assert cur.execute("SELECT COUNT(*) FROM cliente").fetchone()[0] == antes_cli
+    assert cur.execute("SELECT COUNT(*) FROM cliente_empresa").fetchone()[0] == antes_ce
+    # o IDENTITY não pode ter sido reconfigurado (DBCC não é transacional!)
+    assert cur.execute("SELECT IDENT_CURRENT('cliente')").fetchone()[0] == antes_ident
+    assert obj._ultimo_resultado["inseridos"] == 1
+
+
 def test_import_financeiro_dry_run_nao_grava(db_conn):
     """DRY-RUN: a simulação NÃO pode inserir nenhuma linha em vendaPgto, mas ainda
     reporta quantas SERIAM inseridas e quais CPFs não seriam encontrados."""

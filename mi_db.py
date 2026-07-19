@@ -18,6 +18,111 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DRY-RUN de Produtos/Clientes — cursor que LÊ de verdade e IGNORA escritas.
+#
+# Por que interceptar no cursor em vez de guardar cada execute(): a lógica de
+# INSERT de produtos/clientes tem dezenas de comandos entrelaçados (IF NOT EXISTS
+# ... INSERT, SCOPE_IDENTITY, IDENTITY_INSERT, produto_empresa, codBarras).
+# Espalhar `if dry_run` por tudo isso seria invasivo e fácil de esquecer um ponto —
+# e um ponto esquecido GRAVA no banco durante uma "simulação".
+#
+# Aqui a regra é única e central: comando de escrita não chega ao servidor. E como
+# a numeração (SCOPE_IDENTITY) não existiria sem o INSERT, o cursor devolve um id
+# fictício — senão o worker abortaria a linha com "SCOPE_IDENTITY retornou NULL" e
+# a simulação reportaria erros que não existem.
+# ─────────────────────────────────────────────────────────────────────────────
+_RE_ESCRITA = re.compile(
+    r"\b(insert\s+into|update\s+\S+\s+set|delete\s+from|merge\s+into|dbcc|"
+    r"set\s+identity_insert|truncate\s+table|create\s+table|alter\s+table|"
+    r"drop\s+table)\b", re.IGNORECASE)
+
+
+class _CursorSimulado:
+    """Encaminha SELECT para o cursor real; descarta qualquer comando de escrita,
+    contabilizando o que TERIA sido gravado."""
+
+    def __init__(self, real):
+        self._real = real
+        self._fake = None            # None = a última execução foi leitura real
+        self._fake_id = 900000000    # faixa fictícia, longe de ids reais
+        self.escritas = {}           # {operação: quantidade}
+
+    @staticmethod
+    def _rotulo(sql_norm):
+        m = _RE_ESCRITA.search(sql_norm)
+        op = (m.group(1) if m else "escrita").lower()
+        op = re.sub(r"\s+", " ", op)
+        if op.startswith("insert"):
+            alvo = re.search(r"insert\s+into\s+\[?(\w+)", sql_norm, re.IGNORECASE)
+            return f"INSERT {alvo.group(1)}" if alvo else "INSERT"
+        if op.startswith("update"):
+            alvo = re.search(r"update\s+\[?(\w+)", sql_norm, re.IGNORECASE)
+            return f"UPDATE {alvo.group(1)}" if alvo else "UPDATE"
+        if op.startswith("delete"):
+            alvo = re.search(r"delete\s+from\s+\[?(\w+)", sql_norm, re.IGNORECASE)
+            return f"DELETE {alvo.group(1)}" if alvo else "DELETE"
+        return op.upper()
+
+    @staticmethod
+    def _pede_identity(sql_norm):
+        b = sql_norm.lower()
+        return "scope_identity" in b or "@@identity" in b
+
+    def execute(self, sql, *params):
+        s = " ".join(str(sql).split())
+        if _RE_ESCRITA.search(s):
+            rot = self._rotulo(s)
+            self.escritas[rot] = self.escritas.get(rot, 0) + 1
+            # O INSERT de produtos vem junto do SELECT SCOPE_IDENTITY() no MESMO
+            # comando. Descartar tudo faria o fetchone() devolver None e o worker
+            # abortaria a linha com "SCOPE_IDENTITY retornou NULL" — reportando um
+            # erro que só existe por causa da simulação. Devolve o id fictício.
+            if self._pede_identity(s):
+                self._fake_id += 1
+                self._fake = [(self._fake_id,)]
+            else:
+                self._fake = []                 # nada a devolver
+            return self
+        if self._pede_identity(s):
+            self._fake_id += 1                  # id que o INSERT teria gerado
+            self._fake = [(self._fake_id,)]
+            return self
+        self._fake = None
+        self._real.execute(sql, *params)
+        return self
+
+    def executemany(self, sql, seq):
+        s = " ".join(str(sql).split())
+        if _RE_ESCRITA.search(s):
+            rot = self._rotulo(s)
+            self.escritas[rot] = self.escritas.get(rot, 0) + len(list(seq))
+            self._fake = []
+            return self
+        self._fake = None
+        self._real.executemany(sql, seq)
+        return self
+
+    def fetchone(self):
+        if self._fake is not None:
+            return self._fake[0] if self._fake else None
+        return self._real.fetchone()
+
+    def fetchall(self):
+        if self._fake is not None:
+            return list(self._fake)
+        return self._real.fetchall()
+
+    def close(self):
+        try:
+            self._real.close()
+        except Exception:
+            pass
+
+    def __getattr__(self, nome):
+        return getattr(self._real, nome)      # description, nextset, rowcount...
+
+
 class MapeamentoDBMixin:
     # ── Retry de erros TRANSIENTES do SQL Server ───────────────────────────────
     # Números/estados que valem re-tentar (deadlock, lock/query timeout, queda de
@@ -227,6 +332,34 @@ class MapeamentoDBMixin:
                     f"gravada como NULL (amostra; {n} até agora). Confira o formato no arquivo.")
             except Exception:
                 pass
+
+    # ── Cursor consciente do dry-run ──────────────────────────────────────────
+    def _cursor(self):
+        """Cursor para gravação. Em dry-run devolve o cursor SIMULADO, que lê de
+        verdade e descarta escritas — garantindo que a simulação não toque no banco.
+        Os cursores simulados ficam em self._cursores_sim para o resumo final."""
+        cur = self.conn.cursor()
+        if not getattr(self, "_dry_run", False):
+            return cur
+        sim = _CursorSimulado(cur)
+        if not hasattr(self, "_cursores_sim"):
+            self._cursores_sim = []
+        self._cursores_sim.append(sim)
+        return sim
+
+    def _resumo_simulacao(self):
+        """Linhas com o que TERIA sido gravado no banco. [] fora do dry-run."""
+        cursores = getattr(self, "_cursores_sim", None)
+        if not cursores:
+            return []
+        total = {}
+        for c in cursores:
+            for op, n in c.escritas.items():
+                total[op] = total.get(op, 0) + n
+        if not total:
+            return []
+        det = " · ".join(f"{op}: {n}" for op, n in sorted(total.items()))
+        return [f"🔎 Comandos que SERIAM executados no banco — {det}"]
 
     # ── Alertas de REGRA DE NEGÓCIO (qualidade do dado) ───────────────────────
     # Mesmo princípio das datas: problema de dado NÃO pode sumir em silêncio nem

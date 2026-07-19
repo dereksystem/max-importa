@@ -173,7 +173,12 @@ def gerar_html(versoes: list) -> str:
     n_corr = sum(1 for v in versoes for b in v["blocos"]
                  if b["tipo"] in ("correcao", "critico"))
     n_nov = sum(1 for v in versoes for b in v["blocos"] if b["tipo"] == "novidade")
-    atual = versoes[0]["versao"] if versoes else "—"
+    # "versão atual" = a última LIBERADA; o bloco "[Não liberado]" no topo é
+    # trabalho já commitado cuja versão ainda não foi fechada.
+    liberadas = [v for v in versoes
+                 if not v["versao"].lower().startswith(("não liberado", "nao liberado"))]
+    atual = liberadas[0]["versao"] if liberadas else (
+        versoes[0]["versao"] if versoes else "—")
 
     filtros = [("todos", "TODOS"), ("novidade", "✨ NOVIDADES"),
                ("correcao", "🔧 CORREÇÕES"), ("critico", "🚨 CRÍTICOS"),

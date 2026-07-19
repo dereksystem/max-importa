@@ -769,6 +769,26 @@ CORRECOES
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+DRY-RUN (SIMULACAO) TAMBEM EM PRODUTOS E CLIENTES
+- A caixa "Simular (nao grava)", antes so no Financeiro, passa a
+  valer nas 3 telas, inclusive nos modos de UPDATE.
+- Feito com um CURSOR SIMULADO (mi_db._CursorSimulado): encaminha
+  leituras e descarta escritas. Espalhar 'if dry_run' pelos ~200
+  comandos de INSERT seria invasivo e um ponto esquecido GRAVARIA
+  no banco durante uma "simulacao". A regra fica unica e central.
+- Cobre INSERT/UPDATE/DELETE e tambem DBCC CHECKIDENT e SET
+  IDENTITY_INSERT, que NAO sao transacionais - por isso a
+  simulacao tem de ser SEM ESCRITA, e nao com rollback.
+- O INSERT de produtos vem no mesmo comando que o SELECT
+  SCOPE_IDENTITY(); descartar tudo fazia o worker abortar a linha
+  com "SCOPE_IDENTITY retornou NULL" e reportar erro inexistente.
+  O cursor devolve um id ficticio para o fluxo seguir.
+- Em simulacao o acerto de estoque NAO e gerado e o arquivo nao e
+  renomeado. O resumo lista os comandos que SERIAM executados.
+- 22 testes sem banco + 2 de integracao provando contagem
+  inalterada em produto, produto_empresa, fabricante, grupoProd,
+  subGrupoProd, produtoUn, cliente, cliente_empresa e IDENT_CURRENT.
+
 DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
 - O dedup casava so por DOCUMENTO EXATO, e a base real tem
   varios clientes com CPF 00000000000 (nao identifica ninguem).
