@@ -769,6 +769,19 @@ CORRECOES
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+INTERFACE: LOGIN NO NOVO TEMA + RODAPE DE ACAO PADRONIZADO
+- Tela de LOGIN no tema aprovado: fundo de canvas, cards brancos
+  com borda (#E3E6EA, raio 12), rotulos de secao em caixa alta
+  (#A2A9B2), botoes raio 9 e status com BOLINHA colorida (igual
+  ao rodape da sidebar). Saiu a barra vermelha entre secoes - no
+  layout os cards se separam por respiro.
+- RODAPE DE ACAO PADRONIZADO nas 3 telas, criado num lugar so
+  (_criar_barra_acoes). Antes cada tela montava o seu e a ordem
+  divergia: o "Simular" ficava no meio em Produtos e depois do
+  "Voltar" em Clientes/Financeiro.
+  Ordem unica: primaria -> Simular -> Cancelar -> [Acerto], com o
+  VOLTAR na ponta oposta (e navegacao, nao acao sobre dados).
+
 INTERFACE: PRODUTOS/CLIENTES NO NOVO VISUAL + MAXIMIZADA - FASE 3
 - O visual aprovado passa a valer nas TRES telas de importacao.
 - ABRE MAXIMIZADA (state "zoomed"), adaptando-se a qualquer

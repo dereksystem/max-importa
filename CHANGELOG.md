@@ -10,6 +10,20 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Interface: login no novo tema e rodapé de ação padronizado
+Ajustes após a primeira rodada de uso das telas convertidas.
+- **Tela de login** ganhou o tema aprovado: fundo de canvas, cards brancos com borda
+  (`#E3E6EA`, raio 12), rótulos de seção em caixa alta `#A2A9B2`, botões no raio 9 e
+  o status com **bolinha colorida** (igual ao rodapé da sidebar). Saiu a barra
+  vermelha que separava as seções — no layout os cards se separam por respiro.
+- **Rodapé de ação padronizado** nas três telas de importação, agora criado num
+  lugar só (`_criar_barra_acoes`). Antes cada tela montava o seu e a ordem divergia:
+  o "Simular" aparecia no meio em Produtos e depois do "Voltar" em Clientes e
+  Financeiro.
+  Ordem única: **ação primária → Simular → Cancelar → [Acerto de Estoque]**, com o
+  **Voltar na ponta oposta** — é navegação, não ação sobre os dados, e não deve ficar
+  ao lado de um clique que grava.
+
 ### Interface: Produtos e Clientes no novo visual + janela maximizada — FASE 3
 Etapa final do redesign: o visual aprovado passa a valer nas **três** telas de
 importação, e a janela abre ocupando o monitor inteiro.

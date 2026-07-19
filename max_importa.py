@@ -328,6 +328,51 @@ class CancelavelMixin:
                 text=f"✓  {mapeados}/{total} campos mapeados — todos os obrigatórios OK.",
                 text_color=TC_STATUS_OK)
 
+    # ── Barra de ações padronizada (layout 1b) ──────────────────────────────
+    def _criar_barra_acoes(self, parent, com_acerto=False):
+        """Rodapé de ação das 3 telas de importação, criado num lugar só para as
+        telas ficarem idênticas por construção — antes cada uma montava a sua e a
+        ordem divergia (o 'Simular' aparecia no meio numa e no fim das outras).
+
+        Ordem: ação primária → Simular (modifica o que a primária faz, então fica
+        colada nela) → Cancelar → [Acerto de Estoque]. O 'Voltar' vai para a ponta
+        OPOSTA: é navegação, não ação sobre os dados, e não deve ficar ao lado de
+        um clique que grava."""
+        bot = ctk.CTkFrame(parent, fg_color="transparent")
+        bot.pack(padx=24, pady=(10, 4), fill="x")
+
+        self.btn_import = ctk.CTkButton(
+            bot, text="🚀  INICIAR IMPORTAÇÃO", height=48, corner_radius=9,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color=MD_RED, hover_color=MD_RED_HOV,
+            state="disabled", command=self._iniciar)
+        self.btn_import.pack(side="left", padx=(0, 10))
+
+        self.simular_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            bot, text="🔎 Simular (não grava)", variable=self.simular_var,
+            font=ctk.CTkFont(size=12), checkbox_width=18, checkbox_height=18,
+            onvalue=True, offvalue=False).pack(side="left", padx=(0, 18))
+
+        self._criar_btn_cancelar(bot, side="left", padx=(0, 10))
+        self.btn_cancelar.configure(height=48, corner_radius=9,
+                                    font=ctk.CTkFont(size=13, weight="bold"))
+
+        if com_acerto:
+            self.btn_acerto = ctk.CTkButton(
+                bot, text="📦  Gerar Acerto de Estoque", height=48, corner_radius=9,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                fg_color=MD_GRAY, hover_color=MD_GRAY_HOV,
+                state="disabled", command=self._gerar_acerto_estoque)
+            self.btn_acerto.pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(
+            bot, text="↩  Voltar", height=48, width=120, corner_radius=9,
+            fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
+            hover_color=("#EAECEF", "#242832"),
+            command=self._fechar).pack(side="right")
+        return bot
+
     # ── Perfis de mapeamento (salvar/aplicar por layout de arquivo) ──────────
     # O auto-mapeamento só casa nomes IDÊNTICOS; arquivos de terceiros exigem
     # remapear tudo na mão a cada importação. O perfil guarda esse trabalho.
@@ -505,25 +550,31 @@ class JanelaLogin(ctk.CTk):
         return s
 
     def _build(self):
-        _logo_label(self, height=72).pack(pady=(24, 0))
+        # Layout 1b: fundo de canvas + cabeçalho com título forte (23/800)
+        self.configure(fg_color=("#E9EBEF", "#16181C"))
+        _logo_label(self, height=60).pack(pady=(26, 2))
         ctk.CTkLabel(self, text="Importador MaxManager",
-                     font=ctk.CTkFont(size=13), text_color="gray").pack(pady=(4, 2))
-        ctk.CTkLabel(self, text=f"versao {APP_VERSION}",
-                     font=ctk.CTkFont(size=11, weight="bold"),
-                     text_color=MD_RED).pack(pady=(0, 16))
+                     font=ctk.CTkFont(size=13),
+                     text_color=("#5B6470", "#C7CCD4")).pack(pady=(2, 0))
+        ctk.CTkLabel(self, text=f"VERSÃO {APP_VERSION}",
+                     font=ctk.CTkFont(size=10, weight="bold"),
+                     text_color=("#A2A9B2", "#6B7480")).pack(pady=(2, 18))
 
         # Secao 1: info de conexao
-        frame1 = ctk.CTkFrame(self, corner_radius=12)
+        frame1 = ctk.CTkFrame(self, corner_radius=12,
+                              fg_color=("#FFFFFF", "#1B1E24"), border_width=1,
+                              border_color=("#E3E6EA", "#2A2E36"))
         frame1.pack(padx=40, pady=(0, 10), fill="x")
 
         hdr = ctk.CTkFrame(frame1, fg_color="transparent")
         hdr.pack(fill="x", padx=20, pady=(12, 6))
-        ctk.CTkLabel(hdr, text="Conexao com SQL Server",
-                     font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color=MD_RED).pack(side="left")
-        ctk.CTkButton(hdr, text="Editar credenciais",
-                       width=160, height=28, font=ctk.CTkFont(size=11),
+        ctk.CTkLabel(hdr, text="CONEXÃO COM SQL SERVER",
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color=("#A2A9B2", "#6B7480")).pack(side="left")
+        ctk.CTkButton(hdr, text="Editar credenciais", corner_radius=8,
+                       width=160, height=30, font=ctk.CTkFont(size=11),
                        fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
+                       hover_color=("#EAECEF", "#242832"),
                        command=self._editar_credenciais).pack(side="right")
 
         info = ctk.CTkFrame(frame1, fg_color="transparent")
@@ -541,21 +592,22 @@ class JanelaLogin(ctk.CTk):
 
         self.btn_connect = ctk.CTkButton(
             frame1, text="Conectar e Listar Bancos",
-            width=440, height=42, font=ctk.CTkFont(size=13),
+            width=440, height=44, corner_radius=9,
+            font=ctk.CTkFont(size=13, weight="bold"),
             fg_color=MD_RED, hover_color=MD_RED_HOV,
             command=self._conectar)
         self.btn_connect.pack(padx=20, pady=(8, 14))
 
-        # Separador entre seções
-        ctk.CTkFrame(self, height=2, fg_color=MD_RED).pack(padx=40, fill="x")
 
         # Secao 2: banco
-        frame2 = ctk.CTkFrame(self, corner_radius=12)
+        frame2 = ctk.CTkFrame(self, corner_radius=12,
+                              fg_color=("#FFFFFF", "#1B1E24"), border_width=1,
+                              border_color=("#E3E6EA", "#2A2E36"))
         frame2.pack(padx=40, pady=(8, 10), fill="x")
 
-        ctk.CTkLabel(frame2, text="Selecionar Banco de Dados",
-                     font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color=MD_RED).pack(anchor="w", padx=20, pady=(12, 6))
+        ctk.CTkLabel(frame2, text="SELECIONAR BANCO DE DADOS",
+                     font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color=("#A2A9B2", "#6B7480")).pack(anchor="w", padx=20, pady=(12, 6))
         ctk.CTkLabel(frame2, text="Banco disponivel na instancia",
                      font=ctk.CTkFont(size=11), text_color="gray").pack(anchor="w", padx=20)
         self.combo_db = ctk.CTkComboBox(frame2, width=440, state="readonly",
@@ -566,13 +618,29 @@ class JanelaLogin(ctk.CTk):
         # _mostrar_btn_confirmar); por isso não é empacotado aqui.
         self.btn_confirm = ctk.CTkButton(
             self, text="✔  Confirmar Banco e Avançar",
-            width=440, height=52, font=ctk.CTkFont(size=15, weight="bold"),
+            width=440, height=48, corner_radius=9,
+            font=ctk.CTkFont(size=14, weight="bold"),
             fg_color=MD_RED, hover_color=MD_RED_HOV,
             command=self._confirmar)
 
-        self.lbl_status = ctk.CTkLabel(self, text="Aguardando conexão...",
-                                        font=ctk.CTkFont(size=12), text_color=MD_GRAY)
-        self.lbl_status.pack(pady=(4, 14))
+        # Status no padrão do layout: bolinha + texto (igual ao rodapé da sidebar)
+        _st = ctk.CTkFrame(self, fg_color="transparent")
+        _st.pack(pady=(6, 16))
+        self.lbl_status_dot = ctk.CTkLabel(_st, text="●", font=ctk.CTkFont(size=13),
+                                           text_color=("#A2A9B2", "#6B7480"))
+        self.lbl_status_dot.pack(side="left", padx=(0, 6))
+        self.lbl_status = ctk.CTkLabel(_st, text="Aguardando conexão...",
+                                        font=ctk.CTkFont(size=12),
+                                        text_color=("#5B6470", "#C7CCD4"))
+        self.lbl_status.pack(side="left")
+
+    def _status(self, texto, cor):
+        """Atualiza o texto do status e a bolinha junto — verde quando conectado."""
+        self.lbl_status.configure(text=texto, text_color=cor)
+        try:
+            self.lbl_status_dot.configure(text_color=cor)
+        except Exception:
+            pass
 
     def _mostrar_btn_confirmar(self, mostrar: bool):
         """Exibe ou oculta o botão 'Confirmar Banco e Avançar'. Ele só surge
@@ -655,9 +723,8 @@ class JanelaLogin(ctk.CTk):
             self.combo_db.configure(values=["[ conecte primeiro ]"])
             self.combo_db.set("[ conecte primeiro ]")
             self._mostrar_btn_confirmar(False)
-            self.lbl_status.configure(
-                text="Credenciais alteradas — conecte novamente.",
-                text_color=("darkorange", "orange"))
+            self._status("Credenciais alteradas — conecte novamente.",
+                         ("#8A6D3B", "#E0C48A"))
             dlg.destroy()
 
         ctk.CTkButton(dlg, text="✔  Salvar", width=400, height=38,
@@ -695,13 +762,12 @@ class JanelaLogin(ctk.CTk):
             self.combo_db.set(bancos[0])
             # Credenciais validadas → agora sim exibe o botão de avançar.
             self._mostrar_btn_confirmar(True)
-            self.lbl_status.configure(
-                text=f"Conectado como '{self._identidade_txt()}' — selecione o banco.",
-                text_color=TC_STATUS_OK)
+            self._status(f"Conectado como '{self._identidade_txt()}' — selecione o banco.",
+                         TC_STATUS_OK)
         except Exception as e:
             self._mostrar_btn_confirmar(False)
             messagebox.showerror("Erro de Conexao", str(e), parent=self)
-            self.lbl_status.configure(text="Falha na conexao", text_color="red")
+            self._status("Falha na conexão", MD_RED)
 
     def _confirmar(self):
         db = self.combo_db.get()
@@ -710,7 +776,7 @@ class JanelaLogin(ctk.CTk):
         try:
             self.conn = pyodbc.connect(self.base_conn_str + f"DATABASE={db};")
             self.current_db = db
-            self.lbl_status.configure(text=f"Conectado: {db}", text_color=TC_STATUS_OK)
+            self._status(f"Conectado: {db}", TC_STATUS_OK)
             self.withdraw()
             JanelaShell(self).mainloop_child()
         except Exception as e:
@@ -1457,36 +1523,8 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
         self._criar_barra_perfis(self, "PRODUTOS").pack(padx=24, pady=(6, 0), anchor="w")
 
-        bot = ctk.CTkFrame(self, fg_color="transparent")
-        bot.pack(padx=24, pady=8, fill="x")
-
-        self.btn_import = ctk.CTkButton(bot, text="🚀  INICIAR IMPORTAÇÃO",
-                                         height=52, font=ctk.CTkFont(size=15, weight="bold"),
-                                         fg_color=MD_RED, hover_color=MD_RED_HOV,
-                                         state="disabled", command=self._iniciar)
-        self.btn_import.pack(side="left", padx=(0, 12))
-
-        # Botão de acerto de estoque — habilita só após importação com sucesso
-        self.btn_acerto = ctk.CTkButton(bot, text="📦  Gerar Acerto de Estoque",
-                                        height=52, font=ctk.CTkFont(size=13, weight="bold"),
-                                        fg_color=MD_GRAY, hover_color=MD_GRAY_HOV,
-                                        state="disabled", command=self._gerar_acerto_estoque)
-        self.btn_acerto.pack(side="left", padx=(0, 12))
-        # Dry-run: simula tudo (lookup, conversão, validações) SEM gravar.
-        # Em simulação o acerto de estoque NÃO é gerado (ele gravaria no banco).
-        self.simular_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(bot, text="🔎 Simular (não grava)", variable=self.simular_var,
-                        font=ctk.CTkFont(size=12),
-                        onvalue=True, offvalue=False).pack(side="left", padx=(16, 0))
-
-        # Botão Cancelar — habilita só durante a importação
-        self._criar_btn_cancelar(bot, side="left", padx=(0, 12))
-        self.btn_cancelar.configure(height=52,
-                                    font=ctk.CTkFont(size=13, weight="bold"))
-
-        ctk.CTkButton(bot, text="↩  Voltar ao Menu", height=52,
-                       fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
-                       command=self._fechar).pack(side="left")
+        # Rodapé de ação padronizado (com o botão de acerto de estoque).
+        self._criar_barra_acoes(self, com_acerto=True)
 
         # Progress
         self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
@@ -1922,25 +1960,8 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
         self._criar_barra_perfis(self, "CLIENTES").pack(padx=24, pady=(6, 0), anchor="w")
 
-        bot = ctk.CTkFrame(self, fg_color="transparent")
-        bot.pack(padx=24, pady=8, fill="x")
-        self.btn_import = ctk.CTkButton(bot, text="🚀  INICIAR IMPORTAÇÃO",
-                                         height=52, font=ctk.CTkFont(size=15, weight="bold"),
-                                         fg_color=MD_RED, hover_color=MD_RED_HOV,
-                                         state="disabled", command=self._iniciar)
-        self.btn_import.pack(side="left", padx=(0, 12))
-        # Botão Cancelar — habilita só durante a importação
-        self._criar_btn_cancelar(bot, side="left", padx=(0, 12))
-        self.btn_cancelar.configure(height=52,
-                                    font=ctk.CTkFont(size=13, weight="bold"))
-        ctk.CTkButton(bot, text="↩  Voltar ao Menu", height=52,
-                       fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
-                       command=self._fechar).pack(side="left")
-        # Dry-run: simula tudo (lookup, conversão, validações) SEM gravar.
-        self.simular_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(bot, text="🔎 Simular (não grava)", variable=self.simular_var,
-                        font=ctk.CTkFont(size=12),
-                        onvalue=True, offvalue=False).pack(side="left", padx=(16, 0))
+        # Rodapé de ação padronizado.
+        self._criar_barra_acoes(self)
 
         # Progresso e log
         self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
@@ -2494,25 +2515,8 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
         self._criar_barra_perfis(self, "FINANCEIRO").pack(padx=24, pady=(6, 0), anchor="w")
 
-        bot = ctk.CTkFrame(self, fg_color="transparent")
-        bot.pack(padx=24, pady=8, fill="x")
-        self.btn_import = ctk.CTkButton(bot, text="🚀  INICIAR IMPORTAÇÃO",
-                                         height=52, font=ctk.CTkFont(size=15, weight="bold"),
-                                         fg_color=MD_RED, hover_color=MD_RED_HOV,
-                                         state="disabled", command=self._iniciar)
-        self.btn_import.pack(side="left", padx=(0, 12))
-        # Botão Cancelar — habilita só durante a importação
-        self._criar_btn_cancelar(bot, side="left", padx=(0, 12))
-        self.btn_cancelar.configure(height=52,
-                                    font=ctk.CTkFont(size=13, weight="bold"))
-        ctk.CTkButton(bot, text="↩  Voltar ao Menu", height=52,
-                       fg_color="transparent", border_width=1, text_color=TC_TEXT_MAIN,
-                       command=self._fechar).pack(side="left")
-        # Dry-run: simula a importação (lookup + parse + validações) SEM gravar nada.
-        self.simular_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(bot, text="🔎 Simular (não grava)", variable=self.simular_var,
-                        font=ctk.CTkFont(size=12),
-                        onvalue=True, offvalue=False).pack(side="left", padx=(16, 0))
+        # Rodapé de ação padronizado.
+        self._criar_barra_acoes(self)
 
         self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
         self.progress.pack(padx=24, pady=(4, 0), fill="x")
