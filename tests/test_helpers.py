@@ -667,6 +667,7 @@ def test_ids_reservados():
 class _FakeVar:
     def __init__(self, v): self._v = v
     def get(self): return self._v
+    def set(self, v): self._v = v
 
 
 class _FakeLabel:
@@ -674,11 +675,18 @@ class _FakeLabel:
     def configure(self, **kw): self.kw.update(kw)
 
 
-def _obj_status(mapping_vals, obrigatorios):
+class _FakeBarra(_FakeLabel):
+    """Barra de progresso falsa: guarda o valor passado em set()."""
+    def __init__(self): super().__init__(); self.valor = None
+    def set(self, v): self.valor = v
+
+
+def _obj_status(mapping_vals, obrigatorios, layout_1b=False):
     """JanelaProdutos via __new__ (herda o método do CancelavelMixin), com vars/labels/
     frames falsos — testa só a lógica de ✓/✗/—, o resumo e a recoloração da linha, sem
-    abrir janela."""
+    abrir janela. `layout_1b` escolhe entre a pintura antiga e a do layout aprovado."""
     obj = m.JanelaProdutos.__new__(m.JanelaProdutos)
+    obj._LAYOUT_1B = layout_1b
     obj.CAMPOS_OBRIGATORIOS = set(obrigatorios)
     obj.mapping_vars = {c: _FakeVar(v) for c, v in mapping_vals.items()}
     obj.map_status = {c: _FakeLabel() for c in mapping_vals}
@@ -701,6 +709,49 @@ def test_status_mapeamento_marca_e_avisa_faltantes():
     assert obj.map_rows["b"].kw["fg_color"] == "transparent"
     txt = obj.lbl_map_resumo.kw["text"]
     assert "1/3" in txt and "faltam obrigatórios" in txt and "b" in txt
+
+
+def test_status_mapeamento_pinta_estados_do_layout_1b():
+    """Com o layout aprovado, a linha ganha COR DE ESTADO (e borda) em vez de voltar
+    à cor original: mapeado = verde, obrigatório vazio = vermelho suave."""
+    obj = _obj_status(
+        {"a": "col1", "b": "[ ignorar ]", "c": "[ ignorar ]"},
+        obrigatorios=["a", "b"], layout_1b=True)
+    fundo_ok, borda_ok = obj._L1B_MAPEADO
+    fundo_falta, borda_falta = obj._L1B_FALTA
+    fundo_neutro, _ = obj._L1B_NEUTRO
+    assert obj.map_rows["a"].kw["fg_color"] == fundo_ok
+    assert obj.map_rows["a"].kw["border_color"] == borda_ok
+    assert obj.map_rows["b"].kw["fg_color"] == fundo_falta      # obrigatório vazio
+    assert obj.map_rows["b"].kw["border_color"] == borda_falta
+    assert obj.map_rows["c"].kw["fg_color"] == fundo_neutro     # opcional vazio
+
+
+def test_status_mapeamento_1b_destaca_campo_chave():
+    """O campo-chave tem cor própria enquanto não mapeado — e passa a verde ao ser."""
+    obj = _obj_status({"cliId": "[ ignorar ]"}, obrigatorios=[], layout_1b=True)
+    obj.CAMPO_CHAVE = "cliId"
+    obj._atualizar_status_mapeamento()
+    assert obj.map_rows["cliId"].kw["fg_color"] == obj._L1B_CHAVE[0]
+    obj.mapping_vars["cliId"].set("COL_ID")
+    obj._atualizar_status_mapeamento()
+    assert obj.map_rows["cliId"].kw["fg_color"] == obj._L1B_MAPEADO[0]
+
+
+def test_contador_de_obrigatorios_e_barra():
+    """Rodapé do layout 1b: 'Obrigatórios: X de Y' + barra proporcional."""
+    obj = _obj_status({"a": "col1", "b": "[ ignorar ]", "c": "col3"},
+                      obrigatorios=["a", "b"], layout_1b=True)
+    obj.map_contador = _FakeLabel()
+    obj.map_barra = _FakeBarra()
+    obj._atualizar_status_mapeamento()
+    assert obj.map_contador.kw["text"] == "Obrigatórios: 1 de 2"
+    assert obj.map_barra.valor == 0.5
+    # completa o que faltava → barra cheia
+    obj.mapping_vars["b"].set("col2")
+    obj._atualizar_status_mapeamento()
+    assert obj.map_contador.kw["text"] == "Obrigatórios: 2 de 2"
+    assert obj.map_barra.valor == 1.0
 
 
 def test_status_mapeamento_todos_obrigatorios_ok():

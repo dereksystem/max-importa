@@ -10,6 +10,25 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Interface: Produtos e Clientes no novo visual + janela maximizada — FASE 3
+Etapa final do redesign: o visual aprovado passa a valer nas **três** telas de
+importação, e a janela abre ocupando o monitor inteiro.
+- **Abre maximizada** (`state("zoomed")`), adaptando-se a qualquer resolução — quem
+  faz o ajuste é o próprio sistema, sem tamanho fixo no código. Há fallback para
+  ambientes que não suportam e `minsize` de 1024×640 para a janela restaurada não
+  encolher além do utilizável. A área de mapeamento já cresce com a janela.
+- **Produtos** e **Clientes** ganharam os mesmos estados de linha do Financeiro
+  (mapeado / faltando / chave), os selos em pílula e o rodapé com contador
+  "Obrigatórios: X de Y" + barra de progresso.
+- Campo-chave por tela: `proId` (Produtos), `cliId` (Clientes) e `cliCpfCgc`
+  (Financeiro, usado no lookup).
+- **Novo estado âmbar** para os campos de preenchimento assistido do Clientes
+  (`CAMPOS_INTERATIVOS`), com o âmbar da especificação (`#FFF7ED` / `#F5E0BE`) e o
+  selo `AUTO` — antes eram só um texto "[AUTO/OPCIONAL]".
+- 3 testes novos cobrindo a pintura por estado, o destaque do campo-chave e o
+  contador/barra. O teste antigo passou a exercitar explicitamente o caminho legado
+  (`layout_1b=False`), que segue valendo para telas não convertidas.
+
 ### Interface: tela de Financeiro no novo visual (layout 1b) — FASE 2
 Segunda etapa do redesign: o **Financeiro é a tela piloto** do visual aprovado. As
 demais seguem inalteradas — o novo estilo é **opt-in por tela** (`_LAYOUT_1B`), então

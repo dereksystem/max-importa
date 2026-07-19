@@ -769,6 +769,22 @@ CORRECOES
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+INTERFACE: PRODUTOS/CLIENTES NO NOVO VISUAL + MAXIMIZADA - FASE 3
+- O visual aprovado passa a valer nas TRES telas de importacao.
+- ABRE MAXIMIZADA (state "zoomed"), adaptando-se a qualquer
+  resolucao - quem ajusta e o proprio sistema, sem tamanho fixo.
+  Fallback p/ ambientes sem suporte e minsize 1024x640 para a
+  janela restaurada. A area de mapeamento cresce com a janela.
+- Produtos e Clientes ganharam os estados de linha do Financeiro
+  (mapeado / faltando / chave), os selos em pilula e o rodape
+  com contador "Obrigatorios: X de Y" + barra.
+- Campo-chave por tela: proId, cliId e cliCpfCgc (lookup).
+- NOVO estado AMBAR p/ os campos de preenchimento assistido do
+  Clientes (CAMPOS_INTERATIVOS), com o ambar do spec (#FFF7ED /
+  #F5E0BE) e selo AUTO - antes era so o texto "[AUTO/OPCIONAL]".
+- 3 testes novos (pintura por estado, campo-chave, contador). O
+  teste antigo passou a exercitar o caminho legado explicitamente.
+
 INTERFACE: FINANCEIRO NO NOVO VISUAL (layout 1b) - FASE 2
 - O Financeiro e a TELA PILOTO do visual aprovado. O novo estilo
   e OPT-IN por tela (_LAYOUT_1B); Produtos e Clientes so mudam
