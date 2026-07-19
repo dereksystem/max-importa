@@ -624,8 +624,9 @@ class JanelaLogin(ctk.CTk):
             command=self._confirmar)
 
         # Status no padrão do layout: bolinha + texto (igual ao rodapé da sidebar)
-        _st = ctk.CTkFrame(self, fg_color="transparent")
-        _st.pack(pady=(6, 16))
+        self._frm_status = ctk.CTkFrame(self, fg_color="transparent")
+        self._frm_status.pack(pady=(6, 16))
+        _st = self._frm_status
         self.lbl_status_dot = ctk.CTkLabel(_st, text="●", font=ctk.CTkFont(size=13),
                                            text_color=("#A2A9B2", "#6B7480"))
         self.lbl_status_dot.pack(side="left", padx=(0, 6))
@@ -648,7 +649,10 @@ class JanelaLogin(ctk.CTk):
         credenciais ou em falha de conexão."""
         if mostrar:
             if not self.btn_confirm.winfo_ismapped():
-                self.btn_confirm.pack(padx=40, pady=(8, 4), before=self.lbl_status)
+                # 'before' precisa referenciar um IRMÃO na ordem de pack da janela.
+                # O lbl_status vive dentro de _frm_status, então referenciá-lo aqui
+                # fazia o botão não aparecer.
+                self.btn_confirm.pack(padx=40, pady=(8, 4), before=self._frm_status)
         else:
             self.btn_confirm.pack_forget()
 
