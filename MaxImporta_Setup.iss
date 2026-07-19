@@ -66,6 +66,8 @@ Source: "LEIA-ME.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 Source: "max_x.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; Documentacao tecnica visual (abre no navegador).
 Source: "documentacao_max_importa.html"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; Historico de versoes (gerado do CHANGELOG.md por gerar_historico.py).
+Source: "historico_versoes.html"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; Modelos de importacao (planilha + .txt). Wildcard ASCII evita problemas de
 ; acento nos nomes ("modelo de importacao_*.txt").
 Source: "MaxImporta_Modelos_Importacao.xlsx"; DestDir: "{app}\Modelos"; Flags: ignoreversion
@@ -81,6 +83,7 @@ Source: "redist\msodbcsql17_x64.msi"; DestDir: "{tmp}"; Flags: deleteafterinstal
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\max_x.ico"
 Name: "{group}\Documentacao (HTML)"; Filename: "{app}\documentacao_max_importa.html"
+Name: "{group}\Historico de Versoes"; Filename: "{app}\historico_versoes.html"
 Name: "{group}\LEIA-ME"; Filename: "{app}\LEIA-ME.txt"
 Name: "{group}\Pasta do Banco ZERO"; Filename: "{app}\BD_ZERO"
 Name: "{group}\Desinstalar {#MyAppName}"; Filename: "{uninstallexe}"

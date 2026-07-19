@@ -300,7 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="sidebar-logo">
     <div class="app-name">Max_Importa</div>
     <div class="app-sub">DOCUMENTAÇÃO TÉCNICA</div>
-    <div class="version">v3.1.5 — 2026</div>
+    <div class="version">v3.8.0 — 2026</div>
   </div>
 
   <div class="nav-section">Visão Geral</div>
@@ -342,6 +342,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
     <span class="dot" style="background:#ef4444"></span>🔄 Migração Max→Max
   </a>
 
+  <div class="nav-section">Segurança e Qualidade</div>
+  <a class="nav-item" href="#qualidade">
+    <span class="dot" style="background:var(--purple)"></span>Recursos de proteção
+  </a>
+
   <div class="nav-section">Referência</div>
   <a class="nav-item" href="#arquivos">
     <span class="dot" style="background:var(--muted)"></span>Formatos de arquivo
@@ -352,6 +357,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <a class="nav-item" href="#erros">
     <span class="dot" style="background:var(--red)"></span>Erros comuns
   </a>
+  <a class="nav-item" href="historico_versoes.html">
+    <span class="dot" style="background:var(--green)"></span>📜 Histórico de versões
+  </a>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════ MAIN -->
@@ -359,7 +367,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-tag">Documentação Técnica — v3.1.5</div>
+  <div class="hero-tag">Documentação Técnica — v3.8.0</div>
   <h1>Max_<span>Importa</span></h1>
   <p>Importador de dados para o sistema MaxManager. Centraliza a importação de Produtos, Clientes/Fornecedores e lançamentos Financeiros via arquivos CSV ou TXT, e a <strong>Migração entre Bancos MaxData</strong> (banco → banco, na mesma instância SQL), com interface visual MaxData, mapeamento automático de colunas e rastreabilidade completa por logs.</p>
   <div class="hero-chips">
@@ -936,18 +944,64 @@ log_dir = C:\Max\MaxImporta\Log</code>
 <div class="divider"></div>
 
 <!-- ───────────────────────────────────────── ARQUIVOS -->
+<div class="section-anchor" id="qualidade"></div>
+<div class="section-label">12 — Segurança e Qualidade</div>
+<h2 class="section-title">Recursos de Proteção e Qualidade dos Dados</h2>
+<p class="section-desc">Recursos acrescentados entre as versões 3.2 e 3.8, voltados a <strong>não perder dado em silêncio</strong> e a <strong>evitar surpresa em produção</strong>. O histórico completo está em <a href="historico_versoes.html" style="color:var(--blue)">Histórico de versões</a>.</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-icon">🔎</div>
+    <div class="card-title">Simulação (dry-run)</div>
+    <div class="card-body">No Financeiro, a caixa <strong>"Simular (não grava)"</strong> percorre o arquivo inteiro — lookup, conversão e validações — e informa o que <em>aconteceria</em>, <strong>sem gravar nada</strong> no banco. O arquivo não é renomeado nem a seleção é limpa, então dá para conferir e rodar de verdade em seguida.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">🔍</div>
+    <div class="card-title">Pré-flight de schema</div>
+    <div class="card-body">Na Migração, o botão <strong>"Verificar compatibilidade"</strong> compara origem × destino <strong>somente leitura</strong>: tabelas e colunas ausentes, tipo, tamanho, precisão, collation e NOT NULL. Quando a coluna do destino é menor, <strong>conta quantas linhas realmente estourariam</strong>. Também roda automaticamente ao iniciar a migração — se houver bloqueante, pede confirmação.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">✔️</div>
+    <div class="card-title">Regras de negócio</div>
+    <div class="card-body">Durante a importação são conferidos <strong>CPF/CNPJ (dígito verificador)</strong>, formato de <strong>e-mail</strong>, <strong>faixa de datas</strong> e <strong>valores negativos</strong>. Os avisos <strong>não bloqueiam</strong> o registro, mas aparecem no log e no resumo. Um documento inválido nunca casa no lookup — o aviso explica o "CPF/CNPJ não encontrado".</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">📋</div>
+    <div class="card-title">Perfis de mapeamento</div>
+    <div class="card-body">O mapeamento de colunas pode ser <strong>salvo com nome</strong> e reaplicado em importações futuras (por módulo). Ao aplicar, o sistema confronta o perfil com as colunas do arquivo e <strong>avisa quais sumiram</strong>, se o layout mudou. Guardado em <code style="font-family:var(--mono);font-size:11px;">max_importa_perfis.json</code>.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">🛡️</div>
+    <div class="card-title">Backup, retry e integridade</div>
+    <div class="card-body">O backup do destino é <strong>obrigatório</strong> quando Clientes está no plano (única etapa que apaga dados). Erros transientes (deadlock, timeout, queda de conexão) <strong>re-tentam com backoff</strong>; erro de dado sobe na hora. Ao fim, a reconciliação verifica <strong>FKs desabilitadas e linhas órfãs</strong>.</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">🔐</div>
+    <div class="card-title">Credenciais e auditoria</div>
+    <div class="card-body">A senha <strong>não fica embutida</strong> no programa: há autenticação SQL ou Windows, e "lembrar credenciais" grava a senha <strong>criptografada via DPAPI</strong> (só nesta máquina/usuário). Cada migração registra uma linha por entidade em <code style="font-family:var(--mono);font-size:11px;">MaxImporta_Auditoria</code> no destino.</div>
+  </div>
+</div>
+
+<div class="callout callout-info">
+  <div class="callout-icon">ℹ️</div>
+  <div class="callout-body"><strong>Cancelamento e progresso:</strong> toda operação longa mostra o progresso por registro ("X de Y — NN%") e pode ser <strong>cancelada</strong>. Os importadores param entre linhas; a migração para entre entidades (ponto seguro — a entidade em curso termina inteira).</div>
+</div>
+
+<div class="divider"></div>
+
 <div class="section-anchor" id="arquivos"></div>
-<div class="section-label">12 — Formatos de Arquivo</div>
+<div class="section-label">13 — Formatos de Arquivo</div>
 <h2 class="section-title">Formatos de Arquivo Aceitos</h2>
-<p class="section-desc">O sistema aceita arquivos .txt ou .csv com detecção automática do separador pela primeira linha do arquivo.</p>
+<p class="section-desc">O sistema aceita planilhas <strong>.xlsx</strong> e arquivos de texto <strong>.txt / .csv</strong>, com detecção automática de <strong>separador</strong> e de <strong>encoding</strong> (desde a v3.7.0).</p>
 
 <ul class="rules">
-  <li><span class="rule-icon">📄</span><div><strong>Extensões:</strong> .txt ou .csv</div></li>
-  <li><span class="rule-icon">📐</span><div><strong>Separadores (detectados automaticamente):</strong> Tabulação (TAB) — prioridade; Ponto-e-vírgula (;); Vírgula (,)</div></li>
-  <li><span class="rule-icon">🔤</span><div><strong>Encoding:</strong> Latin-1 (ISO-8859-1) — padrão para arquivos exportados do Excel no Windows</div></li>
+  <li><span class="rule-icon">📄</span><div><strong>Extensões:</strong> <code style="font-family:var(--mono);font-size:11px;">.xlsx</code>, <code style="font-family:var(--mono);font-size:11px;">.xlsm</code>, <code style="font-family:var(--mono);font-size:11px;">.csv</code> e <code style="font-family:var(--mono);font-size:11px;">.txt</code>. Planilhas do Excel são lidas direto — <strong>não é mais preciso exportar para texto antes</strong>.</div></li>
+  <li><span class="rule-icon">📐</span><div><strong>Separadores (detectados automaticamente):</strong> Tabulação (TAB) — prioridade; Ponto-e-vírgula (;); Vírgula (,). Não se aplica a .xlsx.</div></li>
+  <li><span class="rule-icon">🔤</span><div><strong>Encoding (detectado automaticamente):</strong> BOM (UTF-8/UTF-16) → UTF-8 estrito → CP1252 (Windows-BR) como último recurso. Antes da v3.7.0 era fixo em Latin-1, o que corrompia acentos de arquivos UTF-8.</div></li>
   <li><span class="rule-icon">1️⃣</span><div><strong>Primeira linha:</strong> deve conter o cabeçalho com os nomes das colunas. As demais linhas são dados.</div></li>
   <li><span class="rule-icon">🔢</span><div><strong>Decimais:</strong> aceitos com vírgula (1.234,56) ou ponto (1234.56) como separador. O sistema normaliza automaticamente antes de gravar.</div></li>
-  <li><span class="rule-icon">📅</span><div><strong>Datas aceitas:</strong> AAAA-MM-DD, DD/MM/AAAA, AAAA-MM-DD HH:MM:SS, DD/MM/AAAA HH:MM:SS, AAAA-MM-DD HH:MM:SS.fff</div></li>
+  <li><span class="rule-icon">📅</span><div><strong>Datas aceitas:</strong> ISO (AAAA-MM-DD, com ou sem hora e milissegundos), BR com barra (DD/MM/AAAA), <strong>traço (DD-MM-AAAA)</strong>, <strong>ponto (DD.MM.AAAA)</strong>, <strong>ISO com barra (AAAA/MM/DD)</strong>, ano de 2 dígitos e <strong>serial do Excel</strong>. Um valor de data não reconhecido <strong>não é mais descartado em silêncio</strong>: aparece no log e no resumo.</div></li>
+  <li><span class="rule-icon">✔️</span><div><strong>Situação do título (pgtPago):</strong> o MaxManager espera <code style="font-family:var(--mono);font-size:11px;">S</code> = Concluído e <code style="font-family:var(--mono);font-size:11px;">N</code> = Aberto. Sinônimos comuns (C, SIM, PAGO, QUITADO, 1 / A, ABERTO, 0) são normalizados automaticamente.</div></li>
 </ul>
 
 <div class="callout callout-info">
@@ -959,9 +1013,19 @@ log_dir = C:\Max\MaxImporta\Log</code>
 
 <!-- ───────────────────────────────────────── LOGS -->
 <div class="section-anchor" id="logs"></div>
-<div class="section-label">13 — Logs e Relatórios</div>
+<div class="section-label">14 — Logs e Relatórios</div>
 <h2 class="section-title">Logs e Relatórios de Importação</h2>
-<p class="section-desc">Cada importação gera dois arquivos na pasta configurada em <code style="font-family:var(--mono);font-size:13px;">max_importa.ini</code>. Os loggers são independentes por janela — múltiplas sessões simultâneas não interferem entre si.</p>
+<p class="section-desc">Cada importação gera vários arquivos na pasta configurada em <code style="font-family:var(--mono);font-size:13px;">max_importa.ini</code> (padrão: <code style="font-family:var(--mono);font-size:13px;">C:\Max\MaxImporta\Log</code>). Os loggers são independentes por janela — múltiplas sessões simultâneas não interferem entre si.</p>
+
+<div class="callout callout-info">
+  <div class="callout-icon">🌐</div>
+  <div class="callout-body"><strong>Relatório HTML (v3.8.0):</strong> além do <code style="font-family:var(--mono);font-size:11px;">.txt</code> e do <code style="font-family:var(--mono);font-size:11px;">.json</code>, cada importação gera um <code style="font-family:var(--mono);font-size:11px;">RELATORIO_&lt;OPERAÇÃO&gt;_&lt;data&gt;.html</code> — com cartões de totais, barras proporcionais, a seção <strong>Qualidade dos dados</strong> (documentos inválidos, datas não reconhecidas, pgtPago normalizado), a tabela de CPF/CNPJ não encontrados e o log completo. É <strong>autocontido</strong>: abre offline com duplo clique, sem internet.</div>
+</div>
+
+<div class="callout callout-info">
+  <div class="callout-icon">🧾</div>
+  <div class="callout-body"><strong>Saída estruturada (v3.4.0):</strong> <code style="font-family:var(--mono);font-size:11px;">RESULTADO_*.json</code> traz o resumo da operação (versão, banco, contagens, erros) para integração, e <code style="font-family:var(--mono);font-size:11px;">ERROS_*.csv</code> lista as falhas já no formato que o Excel abre.</div>
+</div>
 
 <div class="cards">
   <div class="card">
@@ -1028,7 +1092,7 @@ log_dir = C:\Max\MaxImporta\Log</code>
 
 <!-- ───────────────────────────────────────── ERROS -->
 <div class="section-anchor" id="erros"></div>
-<div class="section-label">14 — Solução de Problemas</div>
+<div class="section-label">15 — Solução de Problemas</div>
 <h2 class="section-title">Erros Comuns e Soluções</h2>
 <p class="section-desc">Lista dos erros mais frequentes com orientação de resolução.</p>
 
@@ -1120,7 +1184,7 @@ log_dir = C:\Max\MaxImporta\Log</code>
 </div>
 
 <div style="margin-top:56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;">
-  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v3.1.5 — Documentação Técnica · atualizada em 01/07/2026</div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v3.8.0 — Documentação Técnica · atualizada em 18/07/2026</div>
   <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
   <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
     <strong>Novidades v2.1:</strong> proId vazio segue a numeração do banco (IDENTITY) · unidade cadastrada automaticamente em produtoUn · corte automático de textos longos (fim do erro de truncamento) · campos de cliente Fantasia/RG/Número tratados de forma interativa (CPF × CNPJ) com aviso fiscal · mensagens de erro amigáveis com nome do campo, quantidade e linhas · geração de arquivo de erros e de relatório também na falha de validação · arquivo importado renomeado com status + data/hora e seleção limpa na tela · BUILD.bat instala o Python e se reabre sem elevação automaticamente · Pillow empacotado no .exe.

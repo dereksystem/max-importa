@@ -70,7 +70,8 @@ Modelos de arquivo: `MaxImporta_Modelos_Importacao.xlsx` e os `modelo de importa
 | [docs/MIGRACAO.md](docs/MIGRACAO.md) | Migração Max → Max em detalhe (clientes "banco zero", permissões, resiliência a schema) |
 | [docs/BUILD.md](docs/BUILD.md) | Build, empacotamento, ícone, instalação automática do Python |
 | [docs/ESTRUTURA.md](docs/ESTRUTURA.md) | Estrutura do código (classes, métodos, tabelas) |
-| [CHANGELOG.txt](CHANGELOG.txt) | Histórico de versões |
+| [CHANGELOG.md](CHANGELOG.md) / [CHANGELOG.txt](CHANGELOG.txt) | Histórico de versões (fonte da verdade) |
+| [historico_versoes.html](historico_versoes.html) | **Histórico visual por versão** — o que mudou em cada uma (correções × novidades), com filtro por tipo. Gerado do `CHANGELOG.md` por `python gerar_historico.py` |
 | [documentacao_max_importa.html](documentacao_max_importa.html) | Documentação técnica visual (HTML) |
 | [tests/README.md](tests/README.md) | Suíte de testes de regressão (`python -m pytest`) |
 
