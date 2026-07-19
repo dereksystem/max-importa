@@ -423,63 +423,92 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 <div class="section-anchor" id="requisitos"></div>
 <div class="section-label">02 — Pré-Requisitos</div>
 <h2 class="section-title">Requisitos do Sistema</h2>
-<p class="section-desc">Antes de executar ou compilar o Max_Importa, verifique os itens abaixo.</p>
+<p class="section-desc">Para <strong>usar</strong> o Max_Importa você precisa apenas dos itens abaixo — o instalador cuida do resto.</p>
 
 <ul class="rules">
   <li><span class="rule-icon">🖥</span><div><strong>Sistema Operacional:</strong> Windows 10 ou Windows 11 (64 bits)</div></li>
-  <li><span class="rule-icon">🐍</span><div><strong>Python 3.10 ou superior</strong> — necessário apenas para gerar o .exe. <strong>Instalação automática:</strong> se o Python não estiver presente, o próprio <code style="font-family:var(--mono);font-size:12px;background:#111;padding:1px 5px;border-radius:3px;">BUILD.bat</code> o instala (via winget ou download oficial, já com "Add to PATH") e se reabre para aplicar o PATH.</div></li>
-  <li><span class="rule-icon">🔌</span><div><strong>ODBC Driver 17 for SQL Server</strong> — obrigatório em qualquer máquina que execute o Max_Importa. Baixe em <em>https://aka.ms/odbc17</em></div></li>
-  <li><span class="rule-icon">🗄</span><div><strong>SQL Server</strong> com as tabelas do MaxManager já criadas e acessíveis na rede (instância local ou remota).</div></li>
-  <li><span class="rule-icon">📦</span><div><strong>Dependências Python:</strong> customtkinter, pyodbc, pandas, pillow, pyinstaller — instaladas automaticamente pelo BUILD.bat.</div></li>
+  <li><span class="rule-icon">🗄</span><div><strong>SQL Server</strong> com as tabelas do MaxManager já criadas e acessíveis (instância local ou na rede), e um usuário com permissão de leitura/escrita.</div></li>
+  <li><span class="rule-icon">🔌</span><div><strong>ODBC Driver 17 for SQL Server</strong> — obrigatório para conectar, mas <strong>instalado automaticamente</strong> pelo instalador quando ausente. Só é preciso baixar manualmente (<em>https://aka.ms/odbc17</em>) se a instalação automática falhar.</div></li>
+  <li><span class="rule-icon">🔐</span><div><strong>Permissão de administrador</strong> na máquina, apenas no momento da instalação (para instalar o driver ODBC e o Visual C++). O uso do dia a dia não exige administrador.</div></li>
+  <li><span class="rule-icon">💾</span><div><strong>Espaço em disco:</strong> cerca de 250 MB, considerando o programa, a documentação, os modelos e o banco ZERO compactado.</div></li>
 </ul>
+
+<div class="callout callout-tip" style="margin-top:20px;">
+  <div class="callout-icon">🛠️</div>
+  <div class="callout-body"><strong>Só para quem vai compilar o programa:</strong> é necessário <strong>Python 3.10+</strong> e as dependências <code style="font-family:var(--mono);font-size:11px;">customtkinter, pyodbc, pandas, pillow, openpyxl, pyinstaller, pytest</code> (o <code style="font-family:var(--mono);font-size:11px;">BUILD.bat</code> instala tudo, inclusive o próprio Python), além do <strong>Inno Setup 6</strong> para gerar o instalador. Quem apenas usa o sistema <strong>não precisa de nada disso</strong>.</div>
+</div>
 
 <div class="divider"></div>
 
 <!-- ───────────────────────────────────────── INSTALAÇÃO -->
 <div class="section-anchor" id="instalacao"></div>
 <div class="section-label">03 — Instalação</div>
-<h2 class="section-title">Gerando o Executável</h2>
-<p class="section-desc">O Max_Importa é distribuído como código-fonte. O BUILD.bat compila tudo em um único arquivo .exe sem necessidade de Python instalado para rodar.</p>
+<h2 class="section-title">Instalação pelo Instalador</h2>
+<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_3.8.0.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
 
 <div class="steps">
   <div class="step">
     <div class="step-num">1</div>
     <div class="step-body">
-      <div class="step-title">Organizar os arquivos</div>
-      <div class="step-text">Coloque na mesma pasta: <code style="font-family:var(--mono);font-size:12px;">max_importa.py</code>, <code style="font-family:var(--mono);font-size:12px;">logo_maxdata.png</code>, <code style="font-family:var(--mono);font-size:12px;">max_x.ico</code>, <code style="font-family:var(--mono);font-size:12px;">max_importa.spec</code> e <code style="font-family:var(--mono);font-size:12px;">BUILD.bat</code></div>
+      <div class="step-title">Executar como Administrador</div>
+      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_3.8.0.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
     </div>
   </div>
   <div class="step">
     <div class="step-num">2</div>
     <div class="step-body">
-      <div class="step-title">Executar o BUILD.bat</div>
-      <div class="step-text">Dê <strong>duplo clique</strong> no BUILD.bat. Se for aberto como Administrador, ele <strong>se reabre sozinho sem privilégios</strong> (o PyInstaller não roda elevado) — sem precisar fechar e abrir de novo. Se o <strong>Python não estiver instalado</strong>, o script o instala automaticamente. Depois instala as dependências e gera o executável. O processo leva de 2 a 5 minutos na primeira vez.</div>
+      <div class="step-title">Pasta de instalação</div>
+      <div class="step-text">O padrão é <code style="font-family:var(--mono);font-size:12px;">C:\Max\MaxImporta</code> — e <strong>não</strong> "Arquivos de Programas" de propósito: o sistema grava o <code style="font-family:var(--mono);font-size:12px;">max_importa.ini</code> e a pasta <code style="font-family:var(--mono);font-size:12px;">Log\</code> ao lado do executável, e o Windows não permite escrita em Program Files para usuários comuns. A pasta é criada já com permissão de escrita para o grupo <em>Usuários</em>.</div>
     </div>
   </div>
   <div class="step">
     <div class="step-num">3</div>
     <div class="step-body">
-      <div class="step-title">Resultado</div>
-      <div class="step-text">Ao final, o arquivo <code style="font-family:var(--mono);font-size:12px;">Max_Importa.exe</code> é gerado na mesma pasta. Este único arquivo já inclui todas as dependências.</div>
+      <div class="step-title">Pré-requisitos automáticos</div>
+      <div class="step-text">O instalador verifica e instala <strong>somente se faltarem</strong>: o <strong>Microsoft ODBC Driver 17 for SQL Server</strong> (obrigatório para conectar) e o <strong>Visual C++ Redistributable x64</strong> (dependência do ODBC). Ambos são instalados em modo silencioso. Se já existirem na máquina, nem são copiados — poupando tempo e espaço.</div>
     </div>
   </div>
   <div class="step">
     <div class="step-num">4</div>
     <div class="step-body">
+      <div class="step-title">O que é instalado</div>
+      <div class="step-text">Além do <code style="font-family:var(--mono);font-size:12px;">Max_Importa.exe</code>: esta documentação e o <strong>histórico de versões</strong> (HTML), a subpasta <code style="font-family:var(--mono);font-size:12px;">Modelos\</code> com a planilha e os arquivos-modelo de importação, e a subpasta <code style="font-family:var(--mono);font-size:12px;">BD_ZERO\</code> com o banco "zero" compactado (destino para migração e testes).</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <div class="step-title">Atalhos criados</div>
+      <div class="step-text">No menu Iniciar, o grupo <strong>Max Importa</strong> recebe: o programa, a <em>Documentação (HTML)</em>, o <em>Histórico de Versões</em>, o <em>LEIA-ME</em>, a <em>Pasta do Banco ZERO</em> e o desinstalador. O atalho na área de trabalho é <strong>opcional</strong> — marque a caixa durante a instalação se quiser.</div>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
       <div class="step-title">Primeiro uso — pasta de logs</div>
-      <div class="step-text">Na primeira execução, a subpasta <code style="font-family:var(--mono);font-size:12px;">Log\</code> é criada automaticamente no mesmo diretório do executável. O caminho padrão é <code style="font-family:var(--mono);font-size:12px;">C:\Max\MaxImporta\Log\</code>. Esta configuração é salva em <code style="font-family:var(--mono);font-size:12px;">max_importa.ini</code> e pode ser alterada no menu principal a qualquer momento.</div>
+      <div class="step-text">A pasta <code style="font-family:var(--mono);font-size:12px;">C:\Max\MaxImporta\Log\</code> já é criada pelo instalador. É nela que ficam os logs, os relatórios (<code style="font-family:var(--mono);font-size:11px;">.txt</code>, <code style="font-family:var(--mono);font-size:11px;">.html</code>, <code style="font-family:var(--mono);font-size:11px;">.json</code>) e os arquivos de erro. O caminho é salvo em <code style="font-family:var(--mono);font-size:12px;">max_importa.ini</code> e pode ser alterado no menu principal a qualquer momento.</div>
     </div>
   </div>
 </div>
 
-<div class="callout callout-info" style="margin-top:24px;">
-  <div class="callout-icon">🛡️</div>
-  <div class="callout-body"><strong>Executou como Administrador?</strong> Sem problema. O PyInstaller não roda com privilégios elevados, então o BUILD.bat detecta a elevação e <strong>se reabre automaticamente sem admin</strong> (via explorer.exe), com proteção contra loop. O ideal continua sendo o duplo clique normal, mas não trava mais se abrir como admin.</div>
+<div class="callout callout-tip" style="margin-top:24px;">
+  <div class="callout-icon">🔄</div>
+  <div class="callout-body"><strong>Atualizar de uma versão anterior:</strong> basta executar o instalador da versão nova <strong>por cima</strong> da instalação existente — não é preciso desinstalar antes. O instalador mantém um identificador de produto fixo, então o Windows reconhece a atualização e substitui os arquivos. Suas configurações (<code style="font-family:var(--mono);font-size:11px;">max_importa.ini</code>), perfis de mapeamento (<code style="font-family:var(--mono);font-size:11px;">max_importa_perfis.json</code>) e a pasta <code style="font-family:var(--mono);font-size:11px;">Log\</code> <strong>são preservados</strong>.</div>
+</div>
+
+<div class="callout callout-info" style="margin-top:16px;">
+  <div class="callout-icon">🔌</div>
+  <div class="callout-body"><strong>Se o ODBC não instalar:</strong> ao final, o instalador confere se o <em>ODBC Driver 17 for SQL Server</em> ficou realmente presente. Se não estiver (por exemplo, se o Visual C++ falhou), ele avisa na tela e indica o download manual em <code style="font-family:var(--mono);font-size:11px;">https://aka.ms/odbc17</code>. Sem esse driver o programa abre, mas não conecta ao SQL Server.</div>
+</div>
+
+<div class="callout callout-info" style="margin-top:16px;">
+  <div class="callout-icon">🗑️</div>
+  <div class="callout-body"><strong>Desinstalação:</strong> pelo atalho <em>Desinstalar Max Importa</em> no menu Iniciar, ou por <em>Configurações → Aplicativos</em> do Windows. Os pré-requisitos (ODBC e Visual C++) <strong>não</strong> são removidos, por serem componentes de sistema que outros programas podem usar.</div>
 </div>
 
 <div class="callout callout-tip" style="margin-top:16px;">
-  <div class="callout-icon">🐍</div>
-  <div class="callout-body"><strong>Python ausente?</strong> O BUILD.bat instala o Python automaticamente — tenta primeiro o <code style="font-family:var(--mono);font-size:11px;">winget</code> e, se não houver, baixa o instalador oficial e roda em modo silencioso com "Add to PATH". Em seguida se reabre para o PATH passar a valer. Se a instalação falhar (sem internet, por exemplo), exibe orientação para instalar manualmente.</div>
+  <div class="callout-icon">🛠️</div>
+  <div class="callout-body"><strong>Para desenvolvedores — gerar o instalador:</strong> o executável é compilado com <code style="font-family:var(--mono);font-size:11px;">python -m PyInstaller max_importa.spec --noconfirm --clean</code> (ou pelo <code style="font-family:var(--mono);font-size:11px;">BUILD.bat</code>, que roda os testes como <em>gate</em> antes de compilar) e o instalador é gerado no <strong>Inno Setup 6</strong> com <code style="font-family:var(--mono);font-size:11px;">ISCC.exe MaxImporta_Setup.iss</code>. O passo a passo completo está em <code style="font-family:var(--mono);font-size:11px;">docs/BUILD.md</code>.</div>
 </div>
 
 <div class="divider"></div>
@@ -1119,12 +1148,12 @@ log_dir = C:\Max\MaxImporta\Log</code>
           <td class="err-fix">Resolvido: o sistema corta automaticamente no limite da coluna, tanto em clientes quanto em produtos (proDescricao 100, proLocalizador 20, etc.)</td>
         </tr>
         <tr>
-          <td class="err-code">No module named 'PIL'</td>
+          <td class="err-code">No module named 'PIL' <em>(ao compilar)</em></td>
           <td class="fdesc">.exe antigo, gerado sem o Pillow empacotado</td>
           <td class="err-fix">Resolvido: o BUILD.bat instala o pillow e o .spec inclui PIL nos hiddenimports. Basta regerar o .exe.</td>
         </tr>
         <tr>
-          <td class="err-code">Python nao encontrado (BUILD.bat)</td>
+          <td class="err-code">Python nao encontrado <em>(ao compilar)</em></td>
           <td class="fdesc">Python não instalado na máquina que gera o .exe</td>
           <td class="err-fix">Resolvido: o BUILD.bat instala o Python automaticamente (winget ou download oficial) e se reabre. Se falhar, instale de python.org.</td>
         </tr>
@@ -1169,14 +1198,14 @@ log_dir = C:\Max\MaxImporta\Log</code>
           <td class="err-fix">Menu → "⚙ Configurar pasta de logs" → altere e salve. A pasta é criada automaticamente.</td>
         </tr>
         <tr>
-          <td class="err-code">PermissionError ao gerar .exe</td>
+          <td class="err-code">PermissionError ao gerar .exe <em>(ao compilar)</em></td>
           <td class="fdesc">.exe anterior aberto durante o build</td>
           <td class="err-fix">Feche o Max_Importa.exe e rode o BUILD.bat de novo. Obs.: se abrir como Admin, o BUILD.bat já se reabre sozinho sem elevação.</td>
         </tr>
         <tr>
           <td class="err-code">ODBC Driver não encontrado</td>
           <td class="fdesc">ODBC Driver 17 for SQL Server não instalado na máquina</td>
-          <td class="err-fix">Baixe e instale de https://aka.ms/odbc17. Não requer reinicialização.</td>
+          <td class="err-fix">O instalador já instala o driver automaticamente quando ausente. Se mesmo assim faltar, baixe de https://aka.ms/odbc17 (não requer reinicialização) ou reexecute o instalador como administrador.</td>
         </tr>
       </tbody>
     </table>
@@ -1187,7 +1216,11 @@ log_dir = C:\Max\MaxImporta\Log</code>
   <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v3.8.0 — Documentação Técnica · atualizada em 18/07/2026</div>
   <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
   <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
-    <strong>Novidades v2.1:</strong> proId vazio segue a numeração do banco (IDENTITY) · unidade cadastrada automaticamente em produtoUn · corte automático de textos longos (fim do erro de truncamento) · campos de cliente Fantasia/RG/Número tratados de forma interativa (CPF × CNPJ) com aviso fiscal · mensagens de erro amigáveis com nome do campo, quantidade e linhas · geração de arquivo de erros e de relatório também na falha de validação · arquivo importado renomeado com status + data/hora e seleção limpa na tela · BUILD.bat instala o Python e se reabre sem elevação automaticamente · Pillow empacotado no .exe.
+    <strong>Novidades da v3.8.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
+    <br><br>
+    <strong>Antes disso:</strong> importação de planilhas <code style="font-family:var(--mono);font-size:11px;">.xlsx</code>, detecção automática de encoding e simulação (dry-run) na v3.7.0 · reconciliação com validação de conteúdo, integridade referencial, backup obrigatório e retry na série 3.6.
+    <br><br>
+    👉 O histórico completo, versão a versão — separando <strong>correções</strong> de <strong>novas implementações</strong> — está em <a href="historico_versoes.html" style="color:var(--blue);">historico_versoes.html</a>.
   </div>
 </div>
 
