@@ -10,6 +10,26 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Validação de regras de negócio no parse (qualidade do dado)
+Novas funções puras em `mi_validacao.py` — `cpf_valido`, `cnpj_valido`,
+`cpf_cnpj_valido`, `email_valido`, `data_plausivel`, `valor_positivo` — aplicadas
+linha a linha durante a importação. **Avisam, não bloqueiam**: o registro entra, mas
+o problema aparece no log (amostra) e num resumo agregado no fim.
+- **Financeiro:** CPF/CNPJ com dígito verificador inválido, `pgtValor` negativo e datas
+  fora da faixa plausível. O check de documento é o mais útil: um CPF/CNPJ inválido
+  **nunca** casa no lookup, então o aviso EXPLICA o "CPF/CNPJ não encontrado" —
+  distingue *dado ruim na origem* de *cliente ausente no destino*.
+- **Clientes:** CPF/CNPJ inválido e e-mail malformado.
+- Mecanismo genérico `_registrar_alerta`/`_resumo_alertas` em `mi_db.py` (conta por
+  categoria, loga amostra, nunca lança) — unifica o padrão que já existia para datas
+  e `pgtPago`.
+- Convenção: **vazio nunca é inválido** (ausência é assunto da validação de
+  obrigatórios); nenhuma regra lança exceção.
+- Medido nos arquivos reais do usuário: `cad_receber.txt` → 35 documentos inválidos
+  (todos `00000000000`, parte dos 287 "não encontrados" — agora explicados);
+  `cad_cliente.txt` → 7 documentos inválidos e 1 e-mail com dois endereços colados
+  num campo só. 35 testes novos.
+
 ### Pré-flight: compatibilidade de schema origem × destino (antes de migrar)
 Novo botão **"🔍 Verificar compatibilidade"** na tela de Migração e **gate automático**
 no início da migração (se houver bloqueante, exige confirmação explícita). Roda

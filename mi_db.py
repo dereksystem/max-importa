@@ -228,6 +228,34 @@ class MapeamentoDBMixin:
             except Exception:
                 pass
 
+    # ── Alertas de REGRA DE NEGÓCIO (qualidade do dado) ───────────────────────
+    # Mesmo princípio das datas: problema de dado NÃO pode sumir em silêncio nem
+    # derrubar a importação. Conta por categoria, loga uma amostra e devolve um
+    # resumo agregado no fim.
+    def _registrar_alerta(self, categoria, detalhe=None, msg=None):
+        """Contabiliza um alerta e loga amostra (5 primeiros, depois a cada 500)."""
+        cont = getattr(self, "_alertas_regras", None)
+        if cont is None:
+            cont = self._alertas_regras = {}
+        cont[categoria] = cont.get(categoria, 0) + 1
+        n = cont[categoria]
+        log = getattr(self, "_log", None)
+        if callable(log) and (n <= 5 or n % 500 == 0):
+            try:                       # logar nunca pode abortar a importação
+                log(msg or f"⚠️  {categoria}: '{detalhe}' (amostra; {n} até agora).")
+            except Exception:
+                pass
+
+    def _resumo_alertas(self):
+        """Linha de resumo agregado dos alertas. Lista vazia se não houve nenhum."""
+        cont = getattr(self, "_alertas_regras", None)
+        if not cont:
+            return []
+        det = ", ".join(f"{k}={v}" for k, v in sorted(cont.items()))
+        tot = sum(cont.values())
+        return [f"⚠️  QUALIDADE DOS DADOS: {tot} ocorrência(s) — {det}. "
+                f"Os registros foram processados; revise a origem."]
+
     # ── Utilidades de banco (recebem cursor) ───────────────────────────────────
     def _lookup(self, cursor, tabela, id_col, nome_col, valor):
         """Busca por valor; retorna id ou None. Usa cache em memória (por execução)

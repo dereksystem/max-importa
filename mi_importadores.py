@@ -16,6 +16,7 @@ from tkinter import messagebox
 from decimal import Decimal
 from mi_report import _pos_importacao
 from mi_db import MapeamentoDBMixin
+import mi_validacao as val   # regras de negócio puras (CPF/CNPJ, e-mail, faixas)
 
 
 class ProdutosImportMixin:
@@ -619,6 +620,19 @@ class ClientesImportMixin:
                     self._log(f"Linha {idx+2}: cliId {cli_id} reservado, ignorando.")
                     continue
 
+                # ── Regras de negócio: avisam, NÃO bloqueiam o cadastro ────
+                _doc = self._get_str(row, "cliCpfCgc")
+                if not val.cpf_cnpj_valido(_doc):
+                    self._registrar_alerta(
+                        "CPF/CNPJ inválido", _doc,
+                        msg=f"⚠️  Linha {idx+2}: CPF/CNPJ '{_doc}' é INVÁLIDO "
+                            f"(dígito verificador) — cadastrado assim mesmo.")
+                _mail = self._get_str(row, "cliEmail")
+                if not val.email_valido(_mail):
+                    self._registrar_alerta(
+                        "e-mail inválido", _mail,
+                        msg=f"⚠️  Linha {idx+2}: e-mail '{_mail}' tem formato inválido.")
+
                 data_inc = self._get_datetime(row, "DataInclusao")
 
                 if usar_identity:
@@ -769,6 +783,8 @@ class ClientesImportMixin:
         if pulados:
             self._log(f"ℹ️  {pulados} cliId ja existentes foram pulados (use UPDATE para atualiza-los).")
         self._log(f"🎉 INSERT finalizado — ✅ {sucessos} inseridos | ⏭️ {pulados} pulados | ❌ {erros} erros")
+        for _l in self._resumo_alertas():      # regras de negócio (CPF/CNPJ, e-mail)
+            self._log(_l)
         self._ultimo_resultado = {"inseridos": sucessos, "pulados": pulados, "erros": erros}
         _pos_importacao(self, "CLIENTES", nomes_erro, erros > 0)
         self._salvar_relatorio()
@@ -1130,6 +1146,14 @@ class FinanceiroImportMixin:
                 break
             # ── Lookup CPF/CNPJ → cliId ────────────────────────────────────
             cpf_cnpj = self._get_str(row, "cliCpfCgc")
+            # Regra de negócio: dígito verificador. Documento inválido NUNCA casa no
+            # lookup — avisar aqui EXPLICA o "não encontrado" (é dado ruim na origem,
+            # não cliente faltando no destino).
+            if not val.cpf_cnpj_valido(cpf_cnpj):
+                self._registrar_alerta(
+                    "CPF/CNPJ inválido", cpf_cnpj,
+                    msg=f"⚠️  Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' é INVÁLIDO "
+                        f"(dígito verificador) — não vai casar com nenhum cliente.")
             cli_id   = self._lookup_cli_id(rd, cpf_cnpj)
             if cli_id is None:
                 nao_enc += 1
@@ -1154,6 +1178,19 @@ class FinanceiroImportMixin:
             pgt_tipo_prazo = self._get_int(row, "pgtTipoPrazo")
             pgt_numdoc     = self._get_str_max(row, "pgtNumDoc", 30)
             pgt_tipoconta  = self._get_str_max(row, "pgtTipoConta", 1)
+
+            # ── Regras de negócio: avisam, NÃO bloqueiam ───────────────────
+            if not val.valor_positivo(pgt_valor):
+                self._registrar_alerta(
+                    "valor negativo", pgt_valor,
+                    msg=f"⚠️  Linha {idx+2}: pgtValor negativo ({pgt_valor}).")
+            for _nome, _dt in (("pgtData", pgt_data), ("pgtVecmto", pgt_vecmto),
+                               ("pgtDataQuitou", pgt_data_quit)):
+                if not val.data_plausivel(_dt):
+                    self._registrar_alerta(
+                        "data fora da faixa", f"{_nome}={_dt:%d/%m/%Y}",
+                        msg=f"⚠️  Linha {idx+2}: {_nome} = {_dt:%d/%m/%Y} está fora da "
+                            f"faixa plausível — provável erro de formato na origem.")
 
             # ── Idempotência (migração): pula se já existe lançamento igual ──
             if dedup_on:
@@ -1221,6 +1258,8 @@ class FinanceiroImportMixin:
                       + (f"(seriam gravados como NULL)" if dry_run else "e gravado(s) como NULL")
                       + f" ({det}). Verifique o formato das datas no arquivo "
                       f"(ex.: dd/mm/aaaa, aaaa-mm-dd).")
+        for _l in self._resumo_alertas():      # regras de negócio (CPF/CNPJ, faixas…)
+            self._log(_l)
         pg = getattr(self, "_pago_invalidos", None)
         if pg:
             det = ", ".join(f"'{k}'={v}" for k, v in pg.items())

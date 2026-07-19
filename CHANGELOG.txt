@@ -696,6 +696,24 @@ migracao financeiro tornou-se deterministica. openpyxl no .spec.
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+VALIDACAO DE REGRAS DE NEGOCIO NO PARSE (qualidade do dado)
+- Funcoes puras em mi_validacao.py: cpf_valido, cnpj_valido,
+  cpf_cnpj_valido, email_valido, data_plausivel, valor_positivo.
+  Aplicadas linha a linha. AVISAM, nao bloqueiam: o registro
+  entra, mas o problema vai pro log (amostra) + resumo agregado.
+- Financeiro: CPF/CNPJ com digito verificador invalido, pgtValor
+  negativo e datas fora da faixa. O check de documento EXPLICA o
+  "CPF/CNPJ nao encontrado" (dado ruim na origem x cliente
+  ausente no destino).
+- Clientes: CPF/CNPJ invalido e e-mail malformado.
+- Mecanismo generico _registrar_alerta/_resumo_alertas (mi_db.py)
+  unifica o padrao ja usado em datas e pgtPago.
+- Convencao: vazio NUNCA e invalido; nenhuma regra lanca excecao.
+- Real: cad_receber.txt = 35 documentos invalidos (todos
+  00000000000, parte dos 287 "nao encontrados"); cad_cliente.txt
+  = 7 invalidos + 1 e-mail com dois enderecos colados.
+- 35 testes novos.
+
 PRE-FLIGHT DE SCHEMA (origem x destino), antes de migrar
 - Botao "Verificar compatibilidade" na tela de Migracao +
   gate automatico ao iniciar (bloqueante exige confirmacao).

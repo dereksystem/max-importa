@@ -253,7 +253,7 @@ def test_import_clientes_basico(db_conn):
 # ─────────────────────────────────────────────────────────────────────────────
 def test_import_financeiro_lookup_cliente(db_conn):
     tag = uuid.uuid4().hex[:8].upper()
-    cpf_ok = "99888777000166"
+    cpf_ok = "11222333000181"      # CNPJ VÁLIDO (dígito verificador confere)
 
     # 1) cria um cliente com CPF conhecido (reusa o importador de clientes)
     map_cli = {c: c for c in _linha_cliente(tag, "FIN", cpf_ok).keys()}
@@ -297,6 +297,10 @@ def test_import_financeiro_lookup_cliente(db_conn):
     assert row[3] is not None and row[3].date() == datetime(2026, 8, 4).date()
     # pgtPago normalizado: "C" do arquivo → "S" (Concluído) no banco.
     assert row[4] == "S", f"pgtPago deveria ser 'S', veio {row[4]!r}"
+    # Regra de negócio: o CPF/CNPJ "00000000000000" da 2ª linha é inválido (dígito
+    # verificador) e deve ter sido SINALIZADO — é o que explica o "não encontrado".
+    assert obj_fin._alertas_regras.get("CPF/CNPJ inválido") == 1
+    assert any("QUALIDADE DOS DADOS" in l for l in obj_fin._resumo_alertas())
 
 
 def test_import_financeiro_dry_run_nao_grava(db_conn):

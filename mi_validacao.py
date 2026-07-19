@@ -9,12 +9,103 @@ Convenção de "vazio": '', 'NULL', 'NONE', 'NAN' (case-insensitive) contam como
 As linhas retornadas são 1-based do ARQUIVO (idx do DataFrame + 2, contando o cabeçalho).
 """
 
+import re
+from datetime import datetime
+
 _VAZIOS = ("", "NULL", "NONE", "NAN")
 
 
 def _e_vazio(valor) -> bool:
     s = str(valor).strip() if valor is not None else ""
     return s.upper() in _VAZIOS
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Regras de NEGÓCIO por célula (usadas durante a importação, linha a linha).
+# Todas devolvem True/False e NUNCA lançam — dado ruim não pode derrubar o import.
+# Convenção: valor vazio NÃO é inválido (é ausência); quem exige preenchimento é a
+# validação de obrigatórios.
+# ─────────────────────────────────────────────────────────────────────────────
+def so_digitos(valor) -> str:
+    """Mantém apenas os dígitos (tira ponto, traço, barra, espaço)."""
+    return re.sub(r"\D", "", str(valor)) if valor is not None else ""
+
+
+def cpf_valido(doc) -> bool:
+    """Dígitos verificadores do CPF (11 dígitos). Rejeita repetidos (111...)."""
+    d = so_digitos(doc)
+    if len(d) != 11 or d == d[0] * 11:
+        return False
+    for tam in (9, 10):
+        soma = sum(int(d[i]) * (tam + 1 - i) for i in range(tam))
+        resto = soma % 11
+        dv = 0 if resto < 2 else 11 - resto
+        if dv != int(d[tam]):
+            return False
+    return True
+
+
+def cnpj_valido(doc) -> bool:
+    """Dígitos verificadores do CNPJ (14 dígitos). Rejeita repetidos."""
+    d = so_digitos(doc)
+    if len(d) != 14 or d == d[0] * 14:
+        return False
+    for pesos in ([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
+                  [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]):
+        tam = len(pesos)
+        soma = sum(int(d[i]) * pesos[i] for i in range(tam))
+        resto = soma % 11
+        dv = 0 if resto < 2 else 11 - resto
+        if dv != int(d[tam]):
+            return False
+    return True
+
+
+def cpf_cnpj_valido(doc) -> bool:
+    """True se for CPF (11) ou CNPJ (14) com dígitos verificadores corretos.
+    Vazio devolve True (ausência não é erro de formato)."""
+    if _e_vazio(doc):
+        return True
+    d = so_digitos(doc)
+    if len(d) == 11:
+        return cpf_valido(d)
+    if len(d) == 14:
+        return cnpj_valido(d)
+    return False          # nem CPF nem CNPJ (quantidade de dígitos errada)
+
+
+_RE_EMAIL = re.compile(r"^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$")
+
+
+def email_valido(valor) -> bool:
+    """Formato de e-mail. Vazio é válido (ausência não é erro)."""
+    if _e_vazio(valor):
+        return True
+    return bool(_RE_EMAIL.match(str(valor).strip()))
+
+
+def data_plausivel(dt, ano_min: int = 1900, ano_max: int = None) -> bool:
+    """Data dentro de uma faixa razoável. Fora disso costuma ser erro de parse
+    (ex.: dia/mês trocados virando 0202, ou serial Excel lido como ano).
+    None é plausível (ausência). ano_max padrão = ano atual + 10."""
+    if dt is None:
+        return True
+    if ano_max is None:
+        ano_max = datetime.now().year + 10
+    try:
+        return ano_min <= dt.year <= ano_max
+    except Exception:
+        return True
+
+
+def valor_positivo(valor) -> bool:
+    """Valor monetário/quantidade não-negativo. Vazio é válido."""
+    if valor is None:
+        return True
+    try:
+        return float(valor) >= 0
+    except Exception:
+        return True       # não numérico é problema de outra regra, não desta
 
 
 def campos_nao_mapeados(mapping: dict, campos_obrigatorios) -> list:
