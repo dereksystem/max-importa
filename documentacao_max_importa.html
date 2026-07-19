@@ -300,7 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="sidebar-logo">
     <div class="app-name">Max_Importa</div>
     <div class="app-sub">DOCUMENTAÇÃO TÉCNICA</div>
-    <div class="version">v3.8.0 — 2026</div>
+    <div class="version">v4.0.0 — 2026</div>
   </div>
 
   <div class="nav-section">Visão Geral</div>
@@ -319,7 +319,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
     <span class="dot" style="background:var(--blue)"></span>Tela de Login
   </a>
   <a class="nav-item" href="#menu">
-    <span class="dot" style="background:var(--blue)"></span>Menu Principal
+    <span class="dot" style="background:var(--blue)"></span>Navegação (sidebar)
   </a>
   <a class="nav-item" href="#logs-config">
     <span class="dot" style="background:var(--blue)"></span>Pasta de Logs
@@ -367,7 +367,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-tag">Documentação Técnica — v3.8.0</div>
+  <div class="hero-tag">Documentação Técnica — v4.0.0</div>
   <h1>Max_<span>Importa</span></h1>
   <p>Importador de dados para o sistema MaxManager. Centraliza a importação de Produtos, Clientes/Fornecedores e lançamentos Financeiros via arquivos CSV ou TXT, e a <strong>Migração entre Bancos MaxData</strong> (banco → banco, na mesma instância SQL), com interface visual MaxData, mapeamento automático de colunas e rastreabilidade completa por logs.</p>
   <div class="hero-chips">
@@ -444,14 +444,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 <div class="section-anchor" id="instalacao"></div>
 <div class="section-label">03 — Instalação</div>
 <h2 class="section-title">Instalação pelo Instalador</h2>
-<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_3.8.0.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
+<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.0.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
 
 <div class="steps">
   <div class="step">
     <div class="step-num">1</div>
     <div class="step-body">
       <div class="step-title">Executar como Administrador</div>
-      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_3.8.0.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
+      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.0.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
     </div>
   </div>
   <div class="step">
@@ -526,7 +526,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="flow-arrow">→</div>
   <div class="flow-box accent">③ Banco</div>
   <div class="flow-arrow">→</div>
-  <div class="flow-box green">Menu Principal</div>
+  <div class="flow-box green">Janela principal</div>
 </div>
 
 <div class="ui-block">
@@ -541,7 +541,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="ui-block-header">🗄 Seção: Selecionar Banco de Dados</div>
   <div class="ui-block-body">
     Separada da seção anterior por uma linha vermelha. Lista apenas bancos <code style="font-family:var(--mono);font-size:12px;">ONLINE</code> excluindo os do sistema (master, tempdb, model, msdb).<br><br>
-    <strong>Botão "✔ Confirmar Banco e Avançar"</strong> (vermelho): abre o Menu Principal na cor padrão MaxData. Fica desativado até uma conexão bem-sucedida.
+    <strong>Botão "✔ Confirmar Banco e Avançar"</strong> (vermelho): abre a janela principal, já maximizada. Só aparece depois de uma conexão bem-sucedida.
   </div>
 </div>
 
@@ -554,28 +554,28 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 
 <!-- ───────────────────────────────────────── MENU -->
 <div class="section-anchor" id="menu"></div>
-<div class="section-label">05 — Menu Principal</div>
-<h2 class="section-title">Menu de Módulos</h2>
-<p class="section-desc">Após o login, o menu exibe dois painéis lado a lado separando as operações de atualização e inserção, com o banco ativo identificado em badge.</p>
+<div class="section-label">05 — Navegação</div>
+<h2 class="section-title">Janela Única com Barra Lateral</h2>
+<p class="section-desc">A partir da <strong>v4.0.0</strong> o sistema abre <strong>maximizado</strong>, numa janela só: a barra lateral fica fixa à esquerda e o módulo escolhido é carregado na área de conteúdo. Antes cada módulo abria uma janela separada.</p>
 
 <div class="ui-block">
   <div class="ui-block-header">
-    📋 Layout de 2 colunas
-    <span class="ui-badge ui-badge-gray" style="margin-left:auto">◄ ATUALIZAR</span>
-    &nbsp;
-    <span class="ui-badge ui-badge-red">► INSERIR</span>
+    🧭 Barra lateral
+    <span class="ui-badge ui-badge-red" style="margin-left:auto">ITEM ATIVO</span>
   </div>
   <div class="ui-block-body">
-    <strong>Coluna esquerda — ATUALIZAR (cinza):</strong> Produtos →, Clientes / Forn. →. O botão Financeiro aparece desativado com a nota "Somente INSERT".<br><br>
-    <strong>Coluna direita — INSERIR (vermelho):</strong> Produtos →, Clientes / Forn. →, Financeiro →. Todos os botões redirecionam para a janela de importação já configurada para INSERT.<br><br>
-    <strong>Badge do banco ativo:</strong> exibido abaixo do título como <code style="font-family:var(--mono);font-size:11px;"> 🗄 NOME_DO_BANCO </code> em cinza arredondado. Indica visualmente o banco conectado sem ocupar espaço de texto.
+    <strong>IMPORTAR:</strong> 📦 Produtos · 👥 Clientes · 💰 Financeiro.<br>
+    <strong>FERRAMENTAS:</strong> 🔄 Migração · ⚙ Pasta de logs · 🌗 Alternar tema · ↩ Sair para o login.<br><br>
+    O item em uso fica destacado em vermelho. No <strong>rodapé</strong> da barra, uma bolinha verde e o nome do banco mostram a conexão ativa o tempo todo.
   </div>
 </div>
 
 <ul class="rules">
-  <li><span class="rule-icon">⚙</span><div><strong>Configurar pasta de logs:</strong> abre o diálogo de configuração do diretório onde logs e relatórios são salvos. Pode ser alterado a qualquer momento sem reiniciar o programa.</div></li>
-  <li><span class="rule-icon">↩</span><div><strong>Voltar / Trocar Banco:</strong> fecha o menu e retorna à tela de login, mantendo a conexão ao servidor mas permitindo trocar de banco.</div></li>
-  <li><span class="rule-icon">🌙</span><div><strong>Tema ☀️ / 🌙:</strong> alterna entre tema claro (padrão) e escuro em tempo real. Todas as cores de texto se adaptam automaticamente ao tema escolhido.</div></li>
+  <li><span class="rule-icon">🔀</span><div><strong>Inserir / Atualizar:</strong> em Produtos e Clientes, o seletor no topo da tela alterna a operação — substitui as duas colunas do antigo menu. O Financeiro só faz inserção.</div></li>
+  <li><span class="rule-icon">🖥</span><div><strong>Maximizada e adaptável:</strong> abre ocupando o monitor inteiro, em qualquer resolução. A área de mapeamento cresce junto com a janela.</div></li>
+  <li><span class="rule-icon">⚙</span><div><strong>Pasta de logs:</strong> abre o diálogo do diretório onde logs e relatórios são salvos. Pode mudar a qualquer momento, sem reiniciar.</div></li>
+  <li><span class="rule-icon">🌙</span><div><strong>Alternar tema:</strong> claro (padrão) ou escuro, em tempo real.</div></li>
+  <li><span class="rule-icon">↩</span><div><strong>Sair para o login:</strong> volta à tela de conexão, permitindo trocar de banco.</div></li>
 </ul>
 
 <div class="divider"></div>
@@ -982,7 +982,7 @@ log_dir = C:\Max\MaxImporta\Log</code>
   <div class="card">
     <div class="card-icon">🔎</div>
     <div class="card-title">Simulação (dry-run)</div>
-    <div class="card-body">No Financeiro, a caixa <strong>"Simular (não grava)"</strong> percorre o arquivo inteiro — lookup, conversão e validações — e informa o que <em>aconteceria</em>, <strong>sem gravar nada</strong> no banco. O arquivo não é renomeado nem a seleção é limpa, então dá para conferir e rodar de verdade em seguida.</div>
+    <div class="card-body">Nas <strong>três telas</strong> de importação (inclusive nos modos de atualização), a caixa <strong>"Simular (não grava)"</strong> percorre o arquivo inteiro — lookup, conversão e validações — e informa o que <em>aconteceria</em>, <strong>sem gravar nada</strong> no banco. Também não gera acerto de estoque nem renomeia o arquivo, então dá para conferir e rodar de verdade em seguida. O resumo lista os comandos que <em>seriam</em> executados, por tabela.</div>
   </div>
   <div class="card">
     <div class="card-icon">🔍</div>
@@ -993,6 +993,11 @@ log_dir = C:\Max\MaxImporta\Log</code>
     <div class="card-icon">✔️</div>
     <div class="card-title">Regras de negócio</div>
     <div class="card-body">Durante a importação são conferidos <strong>CPF/CNPJ (dígito verificador)</strong>, formato de <strong>e-mail</strong>, <strong>faixa de datas</strong> e <strong>valores negativos</strong>. Os avisos <strong>não bloqueiam</strong> o registro, mas aparecem no log e no resumo. Um documento inválido nunca casa no lookup — o aviso explica o "CPF/CNPJ não encontrado".</div>
+  </div>
+  <div class="card">
+    <div class="card-icon">👥</div>
+    <div class="card-title">Dedupe de clientes</div>
+    <div class="card-body">Ao importar Clientes, o sistema aponta <strong>duplicados prováveis</strong> — comparando documento, nome idêntico e nome parecido, e ignorando documentos "preenchedores" como <code style="font-family:var(--mono);font-size:11px;">00000000000</code>, que não identificam ninguém. <strong>Nunca funde registros:</strong> juntar clientes é irreversível, então a decisão fica com quem conhece a base. A lista sai no log, no relatório HTML e num <code style="font-family:var(--mono);font-size:11px;">DUPLICADOS_CLIENTES_*.csv</code>.</div>
   </div>
   <div class="card">
     <div class="card-icon">📋</div>
@@ -1048,7 +1053,7 @@ log_dir = C:\Max\MaxImporta\Log</code>
 
 <div class="callout callout-info">
   <div class="callout-icon">🌐</div>
-  <div class="callout-body"><strong>Relatório HTML (v3.8.0):</strong> além do <code style="font-family:var(--mono);font-size:11px;">.txt</code> e do <code style="font-family:var(--mono);font-size:11px;">.json</code>, cada importação gera um <code style="font-family:var(--mono);font-size:11px;">RELATORIO_&lt;OPERAÇÃO&gt;_&lt;data&gt;.html</code> — com cartões de totais, barras proporcionais, a seção <strong>Qualidade dos dados</strong> (documentos inválidos, datas não reconhecidas, pgtPago normalizado), a tabela de CPF/CNPJ não encontrados e o log completo. É <strong>autocontido</strong>: abre offline com duplo clique, sem internet.</div>
+  <div class="callout-body"><strong>Relatório HTML (v4.0.0):</strong> além do <code style="font-family:var(--mono);font-size:11px;">.txt</code> e do <code style="font-family:var(--mono);font-size:11px;">.json</code>, cada importação gera um <code style="font-family:var(--mono);font-size:11px;">RELATORIO_&lt;OPERAÇÃO&gt;_&lt;data&gt;.html</code> — com cartões de totais, barras proporcionais, a seção <strong>Qualidade dos dados</strong> (documentos inválidos, datas não reconhecidas, pgtPago normalizado), a tabela de CPF/CNPJ não encontrados e o log completo. É <strong>autocontido</strong>: abre offline com duplo clique, sem internet.</div>
 </div>
 
 <div class="callout callout-info">
@@ -1213,10 +1218,10 @@ log_dir = C:\Max\MaxImporta\Log</code>
 </div>
 
 <div style="margin-top:56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;">
-  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v3.8.0 — Documentação Técnica · atualizada em 18/07/2026</div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.0.0 — Documentação Técnica · atualizada em 19/07/2026</div>
   <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
   <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
-    <strong>Novidades da v3.8.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
+    <strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
     <br><br>
     <strong>Antes disso:</strong> importação de planilhas <code style="font-family:var(--mono);font-size:11px;">.xlsx</code>, detecção automática de encoding e simulação (dry-run) na v3.7.0 · reconciliação com validação de conteúdo, integridade referencial, backup obrigatório e retry na série 3.6.
     <br><br>

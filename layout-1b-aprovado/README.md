@@ -5,7 +5,7 @@ Guardado para aplicar mais adiante. **Nada do app foi alterado** — esta pasta 
 
 ## Arquivos
 - `Layout_1b.dc.html` — protótipo visual navegável: menu principal (referência escura) + fluxo em tema claro (Login `3a`, Importação/Mapeamento `3b`, Migração `3c`).
-- `logo_maxdata.png` — logo usada nos mockups.
+- A logo usada nos mockups é a da raiz do projeto (`../logo_maxdata.png`) — não há cópia aqui, para não divergir.
 
 ## Estrutura do layout
 Janela dividida em duas colunas:

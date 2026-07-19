@@ -767,7 +767,7 @@ CORRECOES
   snapshot das linhas ao abrir.
 
 --------------------------------------------------------
- [Próxima versão] - a definir
+ [4.0.0] - 2026-07-19
 --------------------------------------------------------
 INTERFACE: LOGIN NO NOVO TEMA + RODAPE DE ACAO PADRONIZADO
 - Tela de LOGIN no tema aprovado: fundo de canvas, cards brancos
@@ -875,3 +875,8 @@ DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
 - Real: 479 suspeitas separadas de 365 "ja cadastrado"; achou o
   mesmo CNPJ sob nomes diferentes (FAZENDA INHUMAS x SIERENTZ
   AGRO BRASIL LTDA). 31 testes novos.
+
+--------------------------------------------------------
+ [Próxima versão] - a definir
+--------------------------------------------------------
+- (descrever aqui a próxima alteração)

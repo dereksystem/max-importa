@@ -8,7 +8,7 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
-## [Não liberado] — versão a definir
+## [4.0.0] — 2026-07-19
 
 ### Interface: login no novo tema e rodapé de ação padronizado
 Ajustes após a primeira rodada de uso das telas convertidas.
