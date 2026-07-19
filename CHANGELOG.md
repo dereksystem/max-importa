@@ -10,6 +10,22 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### Interface: tela de Financeiro no novo visual (layout 1b) — FASE 2
+Segunda etapa do redesign: o **Financeiro é a tela piloto** do visual aprovado. As
+demais seguem inalteradas — o novo estilo é **opt-in por tela** (`_LAYOUT_1B`), então
+Produtos e Clientes só mudam na fase 3.
+- **Linhas de mapeamento com estado por cor**, conforme a especificação: mapeado
+  (`#EAF7F0` / borda `#CDEBDC`), obrigatório faltando (`#FDECEC` / `#F6D6D6`) e campo
+  de lookup (`#FBEEEC` / `#F3D9D5`), com raio 9 px, borda de 1 px e respiro 9×12.
+- **Selos**: `CHAVE` no campo usado para localizar o cliente (`cliCpfCgc`) e `FALTA`
+  nos obrigatórios ainda não mapeados. O `FALTA` é **estado, não rótulo fixo** —
+  desaparece assim que o campo é mapeado.
+- **Rodapé do mapeamento** com contador "Obrigatórios: X de Y" e barra de progresso
+  (150×7, raio 999), que fica verde quando todos os obrigatórios estão preenchidos.
+- A janela passou a **dimensionar-se pela tela disponível** (até 1460×880): com a
+  sidebar consumindo 236 px, o conteúdo precisa de mais largura do que as antigas
+  janelas soltas de 980 px — sem isso a coluna de seleção de coluna ficava cortada.
+
 ### Interface: janela única com sidebar (layout 1b aprovado) — FASE 1
 Primeira etapa do redesign aprovado em `layout-1b-aprovado/`. **Só a navegação mudou;
 o conteúdo das telas continua idêntico** (o visual de cada tela é a fase 2).

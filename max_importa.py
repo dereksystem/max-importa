@@ -216,6 +216,29 @@ class CancelavelMixin:
     _IGNORAR_MAP = "[ ignorar ]"
     _ROW_OK_BG = ("#EAF7F0", "#16291F")   # verde suave (claro, escuro) p/ linha mapeada
 
+    # ── Estados da linha de mapeamento — layout 1b aprovado ────────────────────
+    # (fundo, borda) em tuplas (claro, escuro). Ativado por tela via _LAYOUT_1B,
+    # para as telas ainda não convertidas seguirem com o visual antigo.
+    _L1B_MAPEADO = (("#EAF7F0", "#16291F"), ("#CDEBDC", "#24503C"))
+    _L1B_FALTA   = (("#FDECEC", "#2A1A1A"), ("#F6D6D6", "#5A2E2E"))
+    _L1B_CHAVE   = (("#FBEEEC", "#2A1E1C"), ("#F3D9D5", "#5A3A36"))
+    _L1B_NEUTRO  = (("#FFFFFF", "#1B1E24"), ("#E3E6EA", "#2A2E36"))
+
+    def _pintar_linha_1b(self, campo, linha, mapeado, e_obrig):
+        """Aplica fundo + borda do estado, conforme a especificação do layout."""
+        if campo == getattr(self, "CAMPO_CHAVE", None) and not mapeado:
+            fundo, borda = self._L1B_CHAVE
+        elif mapeado:
+            fundo, borda = self._L1B_MAPEADO
+        elif e_obrig:
+            fundo, borda = self._L1B_FALTA
+        else:
+            fundo, borda = self._L1B_NEUTRO
+        try:
+            linha.configure(fg_color=fundo, border_color=borda, border_width=1)
+        except Exception:
+            pass
+
     def _atualizar_status_mapeamento(self, *_):
         """Atualiza o indicador (✓/✗/—) de cada campo do mapeamento e o rótulo de
         resumo ('X/Y campos mapeados' + aviso se faltam obrigatórios). Chamado pelo
@@ -250,11 +273,41 @@ class CancelavelMixin:
             # linha inteira: verde suave quando mapeada; cor original caso contrário
             linha = rows.get(campo)
             if linha is not None:
+                if getattr(self, "_LAYOUT_1B", False):
+                    self._pintar_linha_1b(campo, linha, ok, e_obrig)
+                    selo = (getattr(self, "map_badge", {}) or {}).get(campo)
+                    if selo is not None:
+                        try:
+                            if ok:
+                                selo.pack_forget()
+                            elif not selo.winfo_ismapped():
+                                selo.pack(side="left", padx=(8, 0))
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        linha.configure(fg_color=self._ROW_OK_BG if ok
+                                        else bgs.get(campo, "transparent"))
+                    except Exception:
+                        pass
+        total = len(vars_)
+
+        # Contador de obrigatórios + barra de progresso (rodapé do layout 1b)
+        barra = getattr(self, "map_barra", None)
+        lbl_cont = getattr(self, "map_contador", None)
+        if barra is not None or lbl_cont is not None:
+            n_obrig = len([c for c in vars_ if c in obrigatorios])
+            ok_obrig = n_obrig - len(obrig_faltando)
+            if lbl_cont is not None:
+                lbl_cont.configure(text=f"Obrigatórios: {ok_obrig} de {n_obrig}")
+            if barra is not None:
                 try:
-                    linha.configure(fg_color=self._ROW_OK_BG if ok else bgs.get(campo, "transparent"))
+                    barra.set((ok_obrig / n_obrig) if n_obrig else 0)
+                    barra.configure(progress_color=TC_STATUS_OK if not obrig_faltando
+                                    else MD_RED)
                 except Exception:
                     pass
-        total = len(vars_)
+
         resumo = getattr(self, "lbl_map_resumo", None)
         if resumo is None:
             return
@@ -947,7 +1000,12 @@ class JanelaShell(ctk.CTkToplevel):
         self.conn = login_win.conn
         self.title(f"Max_Importa  v{APP_VERSION}")
         self.resizable(True, True)
-        centralizar(self, 1180, 780)
+        # A sidebar consome 236 px, então o conteúdo precisa de mais largura que as
+        # antigas janelas soltas (980). Usa o maior tamanho que caiba na tela.
+        self.update_idletasks()
+        _lp = min(1460, max(1100, self.winfo_screenwidth() - 120))
+        _ap = min(880, max(700, self.winfo_screenheight() - 140))
+        centralizar(self, _lp, _ap)
         self.protocol("WM_DELETE_WINDOW", self._fechar)
 
         self._tela_atual = None
@@ -2144,6 +2202,10 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
 class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin,
                        TelaHospedada, ctk.CTkFrame):
 
+    # ── Layout 1b aprovado (fase 2): esta tela é a piloto do novo visual ──
+    _LAYOUT_1B = True
+    CAMPO_CHAVE = "cliCpfCgc"    # documento usado no lookup do cliente
+
     CAMPOS_OBRIGATORIOS = {
         "cliCpfCgc", "pgtCliNome",
         "pgtValor", "pgtData", "pgtVecmto", "pgtTipoConta", "pgtPago"
@@ -2249,6 +2311,7 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         self.map_status = {}   # indicador ✓/✗/— por campo
         self.map_rows = {}     # frame de cada linha (recolorir quando mapeada)
         self.map_row_bg = {}   # cor original de cada linha
+        self.map_badge = {}    # selo "FALTA" por campo (escondido ao mapear)
         for campo, tabela, descr, obrig in self.CAMPOS_FIN:
             if obrig and not secao_obrig_ok:
                 sep = ctk.CTkFrame(self.scroll_map, height=2, fg_color=MD_RED)
@@ -2279,15 +2342,18 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
                 bg, tc, badge, bc, fw = _alt_bg, TC_TEXT_MAIN, "", "gray", "normal"
                 _alt_idx += 1
 
-            lf = ctk.CTkFrame(self.scroll_map, fg_color=bg, corner_radius=6)
-            lf.grid(row=grid_row, column=0, columnspan=3, padx=4, pady=2, sticky="ew")
+            # Layout 1b: raio 9, borda 1px e respiro 9x12 (o estado é pintado
+            # por _pintar_linha_1b, chamado no _atualizar_status_mapeamento).
+            lf = ctk.CTkFrame(self.scroll_map, fg_color=bg, corner_radius=9,
+                              border_width=1, border_color=("#E3E6EA", "#2A2E36"))
+            lf.grid(row=grid_row, column=0, columnspan=3, padx=4, pady=3, sticky="ew")
             self.scroll_map.columnconfigure(0, weight=1)
             lf.columnconfigure(0, weight=1)
             lf.columnconfigure(1, weight=0)
             lf.columnconfigure(2, weight=0)
 
             nf = ctk.CTkFrame(lf, fg_color="transparent")
-            nf.grid(row=0, column=0, padx=8, pady=5, sticky="w")
+            nf.grid(row=0, column=0, padx=12, pady=9, sticky="w")
             st = ctk.CTkLabel(nf, text="—", width=18,
                               font=ctk.CTkFont(size=13, weight="bold"), text_color="gray")
             st.pack(side="left", padx=(0, 4))
@@ -2295,14 +2361,23 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
             self.map_rows[campo] = lf
             self.map_row_bg[campo] = lf.cget("fg_color")
             ctk.CTkLabel(nf, text=campo,
-                         font=ctk.CTkFont(size=11, weight=fw),
+                         font=ctk.CTkFont(size=12, weight="bold" if obrig else "normal"),
                          text_color=tc).pack(side="left")
             ctk.CTkLabel(nf, text=f"  {descr}",
-                         font=ctk.CTkFont(size=10), text_color="gray").pack(side="left")
-            if badge:
-                ctk.CTkLabel(nf, text=badge,
-                             font=ctk.CTkFont(size=10, weight="bold"),
-                             text_color=bc).pack(side="left", padx=(6, 0))
+                         font=ctk.CTkFont(size=11),
+                         text_color=("#8A9099", "#8A9099")).pack(side="left")
+            # Selo do estado: CHAVE (campo de lookup) ou FALTA (obrigatório vazio)
+            if campo == self.CAMPO_CHAVE:
+                ctk.CTkLabel(nf, text=" CHAVE ", font=ctk.CTkFont(size=10, weight="bold"),
+                             corner_radius=5, fg_color=("#F6DAD5", "#5A3A36"),
+                             text_color=("#A93226", "#E8A79E")).pack(side="left", padx=(8, 0))
+            elif campo in self.CAMPOS_OBRIGATORIOS:
+                # "FALTA" é ESTADO, não rótulo fixo: _atualizar_status_mapeamento
+                # esconde o selo assim que o campo é mapeado.
+                _b = ctk.CTkLabel(nf, text=" FALTA ", font=ctk.CTkFont(size=10, weight="bold"),
+                                  corner_radius=5, fg_color=MD_RED, text_color="#FFFFFF")
+                _b.pack(side="left", padx=(8, 0))
+                self.map_badge[campo] = _b
 
             ctk.CTkLabel(lf, text=tabela,
                          font=ctk.CTkFont(size=10), text_color="gray",
@@ -2316,7 +2391,20 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
             cb.grid(row=0, column=2, padx=(0, 8), pady=5, sticky="e")
             grid_row += 1
 
-        # Botões
+        # Rodapé do mapeamento (layout 1b): contador de obrigatórios + barra.
+        # Substitui a leitura do texto corrido por um indicador de progresso.
+        rod_map = ctk.CTkFrame(self, fg_color="transparent")
+        rod_map.pack(padx=24, pady=(8, 0), fill="x")
+        self.map_contador = ctk.CTkLabel(
+            rod_map, text="Obrigatórios: 0 de 0",
+            font=ctk.CTkFont(size=12), text_color=("#5B6470", "#C7CCD4"))
+        self.map_contador.pack(side="left")
+        self.map_barra = ctk.CTkProgressBar(rod_map, width=150, height=7,
+                                            corner_radius=999, progress_color=MD_RED,
+                                            fg_color=("#EDEFF2", "#2A2E36"))
+        self.map_barra.set(0)
+        self.map_barra.pack(side="left", padx=(10, 0))
+
         # Resumo do mapeamento (atualizado a cada seleção de coluna)
         self.lbl_map_resumo = ctk.CTkLabel(
             self, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",

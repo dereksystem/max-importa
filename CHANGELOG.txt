@@ -769,6 +769,25 @@ CORRECOES
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+INTERFACE: FINANCEIRO NO NOVO VISUAL (layout 1b) - FASE 2
+- O Financeiro e a TELA PILOTO do visual aprovado. O novo estilo
+  e OPT-IN por tela (_LAYOUT_1B); Produtos e Clientes so mudam
+  na fase 3.
+- Linhas de mapeamento com ESTADO POR COR: mapeado (#EAF7F0 /
+  borda #CDEBDC), obrigatorio faltando (#FDECEC / #F6D6D6) e
+  campo de lookup (#FBEEEC / #F3D9D5). Raio 9px, borda 1px,
+  respiro 9x12.
+- Selos: CHAVE no campo de lookup (cliCpfCgc) e FALTA nos
+  obrigatorios nao mapeados. FALTA e ESTADO, nao rotulo fixo:
+  some assim que o campo e mapeado.
+- Rodape do mapeamento com contador "Obrigatorios: X de Y" e
+  barra de progresso (150x7, raio 999) que fica verde quando
+  todos os obrigatorios estao preenchidos.
+- A janela passou a se dimensionar pela tela (ate 1460x880): com
+  a sidebar consumindo 236px, o conteudo precisa de mais largura
+  que as antigas janelas soltas de 980px, senao a coluna de
+  selecao ficava cortada.
+
 INTERFACE: JANELA UNICA COM SIDEBAR (layout 1b) - FASE 1
 - Primeira etapa do redesign aprovado em layout-1b-aprovado/.
   SO A NAVEGACAO MUDOU; o conteudo das telas segue identico
