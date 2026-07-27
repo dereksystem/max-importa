@@ -879,4 +879,22 @@ DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
-- (descrever aqui a próxima alteração)
+CRITICO - dedupe congelava o app em base grande (55 mil)
+- Ao importar Clientes, o dedupe rodava ANTES do INSERT e
+  enumerava C(k,2) pares por grupo de nome/documento igual, SEM
+  limite. Com 55.604 clientes + a base e nomes pouco diversos,
+  gerava ~8 MILHOES de pares, um CSV de >1 GB e ~60s de CPU
+  segurando o GIL - o app parecia travado. O log parava em
+  "Iniciando INSERT clientes", que e onde o dedupe comeca.
+- detectar_duplicados agora e LIMITADO: grupo com >30 registros
+  iguais vira UM resumo ("246 registros com o nome identico X")
+  em vez de 30 mil pares; teto de 5.000 achados no total;
+  orcamento de comparacoes na busca por nome parecido. Medido:
+  1,1s (era 33s), 512 achados (era 8,4 milhoes), CSV de 6 KB
+  (era 1,2 GB). Arquivos pequenos: saida identica a de antes.
+- PENDENCIA separada: o INSERT de Clientes ainda grava linha a
+  linha com commit por registro - lento p/ dezenas de milhares,
+  mas MOSTRA progresso (nao e o congelamento). Otimizar (commit
+  em lote) e mudanca maior no caminho transacional - passo a parte.
+- 4 testes novos (grupo grande vira resumo, teto, doc repetido,
+  desempenho com 105 mil registros).

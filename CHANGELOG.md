@@ -8,6 +8,33 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [Não liberado] — versão a definir
+
+### 🐛 CRÍTICO — dedupe congelava o app em base grande (55 mil clientes)
+Ao importar Clientes, o dedupe rodava **antes** do INSERT, na thread de trabalho, e
+enumerava `C(k,2)` pares para cada grupo de nome/documento igual, **sem limite**. Com
+55.604 clientes + a base do destino e nomes pouco diversos (o caso real), isso gerava
+**~8 milhões de pares**, um CSV de duplicados de **>1 GB** e ~60 s de CPU segurando o
+GIL — o app parecia travado, "ao ponto de ter que fechar o programa". O log parava
+exatamente em *"Iniciando INSERT clientes"*, que é onde o dedupe começa.
+- `detectar_duplicados` agora é **limitado**: um grupo com mais de 30 registros iguais
+  vira **um resumo** (*"246 registros com o nome idêntico 'X'"*) em vez de 30 mil pares;
+  há um **teto de 5.000 achados** no total; e a busca por nome parecido respeita um
+  **orçamento de comparações**. Medido no mesmo cenário: **1,1 s** (era 33 s), **512
+  achados** (era 8,4 milhões), CSV de **6 KB** (era 1,2 GB).
+- Os resumos são inclusive **mais úteis**: 200 clientes com o mesmo nome é 1 achado
+  acionável, não 20 mil pares de ruído. Para arquivos pequenos (centenas de clientes),
+  a saída é **idêntica** à de antes — o limite só age no caso patológico.
+- ⚠️ **Pendência separada:** o INSERT de Clientes ainda grava **linha a linha com
+  commit por registro** (2 INSERTs + `@@IDENTITY` + reseed de IDENTITY em erro). Isso
+  é lento para dezenas de milhares de linhas, mas **mostra progresso** (não é o
+  congelamento). Otimizá-lo (commit em lote com isolamento de erro) é uma mudança
+  maior e arriscada no caminho transacional — fica para um passo dedicado com teste.
+- 4 testes novos: grupo grande vira resumo, teto global, documento repetido e
+  desempenho com 105 mil registros (< 15 s).
+
+---
+
 ## [4.0.0] — 2026-07-19
 
 ### Interface: login no novo tema e rodapé de ação padronizado

@@ -196,3 +196,51 @@ def test_desempenho_com_volume_realista():
     ini = time.time()
     val.detectar_duplicados(regs)
     assert time.time() - ini < 10.0
+
+
+def test_grupo_grande_de_nome_vira_resumo_e_nao_explode():
+    """Nome genérico repetido milhares de vezes NÃO pode virar C(k,2) pares — isso
+    gerava 8 milhões de pares e travava o app com 55 mil clientes. Vira 1 resumo."""
+    regs = [_reg(f"a{i}", "CONSUMIDOR FINAL", f"{i:011d}") for i in range(5000)]
+    pares = val.detectar_duplicados(regs)
+    resumos = [p for p in pares if p["tipo"] == "nome-exato"
+               and str(p["b"]).startswith("+")]
+    assert len(resumos) == 1
+    assert "5000 registros com o nome idêntico" in resumos[0]["motivo"]
+    # e o total de achados fica MUITO abaixo do C(5000,2) = 12,5 milhões
+    assert len(pares) < 100
+
+
+def test_teto_global_de_achados():
+    """Nenhum cenário pode devolver mais que max_achados — protege memória e o CSV."""
+    # 200 nomes distintos, cada um repetido 20x (abaixo de max_grupo=30) → muitos pares
+    regs = []
+    for g in range(200):
+        for k in range(20):
+            regs.append(_reg(f"r{g}_{k}", f"NOME GRUPO {g}", f"{g * 100 + k:011d}"))
+    pares = val.detectar_duplicados(regs, max_achados=500)
+    assert len(pares) <= 500
+
+
+def test_documento_repetido_demais_vira_resumo():
+    """Um CPF/CNPJ real repetido dezenas de vezes é achado único, não C(k,2) pares."""
+    regs = [_reg(f"d{i}", f"NOME {i}", "52998224725") for i in range(100)]
+    pares = val.detectar_duplicados(regs, max_grupo=30)
+    docs = [p for p in pares if p["tipo"] == "documento" and str(p["b"]).startswith("+")]
+    assert len(docs) == 1
+    assert "repetido em 100 registros" in docs[0]["motivo"]
+
+
+def test_desempenho_volume_grande_de_verdade():
+    """55 mil do arquivo × 50 mil do banco com nomes pouco diversos (pior caso real):
+    tem de terminar em poucos segundos, não em minutos."""
+    import time
+    nomes = ["MARIA SILVA", "JOSE SANTOS", "COMERCIAL LTDA", "JOAO SOUZA"]
+    regs = [_reg(f"a{i}", nomes[i % len(nomes)], f"{i:011d}") for i in range(55000)]
+    regs += [_reg(f"b{i}", nomes[i % len(nomes)], f"{i + 900000:011d}", "banco")
+             for i in range(50000)]
+    ini = time.time()
+    pares = val.detectar_duplicados(regs)
+    dur = time.time() - ini
+    assert dur < 15.0, f"dedupe levou {dur:.1f}s — voltou a explodir"
+    assert len(pares) <= 5000

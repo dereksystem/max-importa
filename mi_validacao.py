@@ -167,7 +167,9 @@ def _bloco(nome_norm: str) -> str:
     return nome_norm[:4]
 
 
-def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = True):
+def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = True,
+                        max_achados: int = 5000, max_grupo: int = 30,
+                        orcamento_similaridade: int = 120000):
     """Acha pares provavelmente duplicados.
 
     registros: lista de dicts {'ref': qualquer, 'nome': str, 'doc': str,
@@ -179,6 +181,14 @@ def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = 
 
     so_com_arquivo=True descarta pares banco×banco (duplicidade que já existia e
     não foi introduzida por esta importação).
+
+    LIMITES (essenciais em base grande — dezenas de milhares de clientes):
+    - um grupo com mais de `max_grupo` registros iguais vira **um resumo** em vez de
+      C(k,2) pares — 200 clientes com o mesmo nome é 1 achado acionável, não 20 mil;
+    - para em `max_achados` no total (além disso o relatório vira ruído);
+    - a busca por nome PARECIDO respeita um orçamento de comparações.
+    Sem esses limites, importar 55 mil clientes gerava ~8 MILHÕES de pares e um CSV de
+    >1 GB, com o app congelado por minutos.
     """
     itens = []
     for r in registros or []:
@@ -193,7 +203,12 @@ def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = 
 
     pares, vistos = [], set()
 
+    def _cap():
+        return len(pares) >= max_achados
+
     def _add(a, b, tipo, motivo, score):
+        if _cap():
+            return
         if so_com_arquivo and a["origem"] == "banco" and b["origem"] == "banco":
             return
         chave = tuple(sorted((str(a["ref"]), str(b["ref"]))))
@@ -204,12 +219,27 @@ def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = 
                       "a": a["ref"], "b": b["ref"],
                       "nome_a": a["nome"], "nome_b": b["nome"]})
 
+    def _resumo(grupo, tipo, motivo):
+        """Grupo grande demais para enumerar: 1 achado que representa o grupo."""
+        if _cap():
+            return
+        a = grupo[0]
+        pares.append({"tipo": tipo, "motivo": motivo, "score": 1.0,
+                      "a": a["ref"], "b": f"+{len(grupo) - 1} outro(s)",
+                      "nome_a": a["nome"], "nome_b": ""})
+
     # 1) mesmo documento REAL (placeholder não identifica ninguém)
     por_doc = {}
     for it in itens:
         if it["doc"] and not it["doc_ph"]:
             por_doc.setdefault(it["doc"], []).append(it)
     for doc, grupo in por_doc.items():
+        if _cap():
+            break
+        if len(grupo) > max_grupo:      # doc repetido dezenas de vezes: resume
+            _resumo(grupo, "documento",
+                    f"CPF/CNPJ ({doc}) repetido em {len(grupo)} registros")
+            continue
         for i in range(len(grupo)):
             for j in range(i + 1, len(grupo)):
                 a, b = grupo[i], grupo[j]
@@ -234,6 +264,12 @@ def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = 
         if it["nome_norm"]:
             por_nome.setdefault(it["nome_norm"], []).append(it)
     for nome, grupo in por_nome.items():
+        if _cap():
+            break
+        if len(grupo) > max_grupo:      # nome genérico repetido: resume
+            _resumo(grupo, "nome-exato",
+                    f"{len(grupo)} registros com o nome idêntico '{nome}'")
+            continue
         for i in range(len(grupo)):
             for j in range(i + 1, len(grupo)):
                 a, b = grupo[i], grupo[j]
@@ -244,19 +280,27 @@ def detectar_duplicados(registros, limiar: float = 0.88, so_com_arquivo: bool = 
                     motivo = "nome idêntico"
                 _add(a, b, "nome-exato", motivo, 1.0)
 
-    # 3) nome PARECIDO — só dentro do mesmo bloco (performance)
+    # 3) nome PARECIDO — só dentro do mesmo bloco (performance) + orçamento
+    comparacoes = 0
     blocos = {}
     for it in itens:
         if it["nome_norm"]:
             blocos.setdefault(_bloco(it["nome_norm"]), []).append(it)
     for _b, grupo in blocos.items():
+        if _cap() or comparacoes >= orcamento_similaridade:
+            break
         if len(grupo) < 2 or len(grupo) > 400:      # bloco gigante: não vale o custo
             continue
         for i in range(len(grupo)):
+            if _cap() or comparacoes >= orcamento_similaridade:
+                break
             for j in range(i + 1, len(grupo)):
                 a, b = grupo[i], grupo[j]
                 if a["nome_norm"] == b["nome_norm"]:
                     continue                        # já tratado no passo 2
+                comparacoes += 1
+                if comparacoes >= orcamento_similaridade:
+                    break
                 s = similaridade(a["nome_norm"], b["nome_norm"])
                 if s >= limiar:
                     suf = " (ambos sem documento válido)" if (a["doc_ph"] and b["doc_ph"]) else ""
