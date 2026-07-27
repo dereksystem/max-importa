@@ -10,6 +10,20 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### 🐛 Botões de ação sumiam em resolução baixa (1366×768)
+Nas telas de importação, tudo era empacotado de cima para baixo e o rodapé (contador,
+perfis, **barra de ação**, progresso, log) vinha **depois** do mapeamento — que tinha
+altura mínima grande. Em monitor de ~700 px úteis (1366×768 é comum), a soma estourava
+e os botões ficavam **abaixo da dobra**, inacessíveis.
+- Novo `_montar_rodape` monta o rodapé inteiro num frame **ancorado ao fundo**
+  (`side="bottom"`, empacotado ANTES do scroll). O mapeamento passa a preencher o
+  espaço acima e **encolher** quando falta altura, em vez de empurrar os botões para
+  fora. Verificado: numa janela de 800 px o botão fica visível e **acompanha o fundo**
+  ao redimensionar (empacotar o rodapé depois do scroll, como estava, o cortava).
+- Alturas mínimas reduzidas (mapeamento 300→180, log 130→84) para sobrar espaço em
+  telas pequenas — em telas grandes o mapeamento ainda cresce (`expand`).
+- De quebra, o rodapé (que era **duplicado** nos 3 `_build`) virou um método único.
+
 ### 🐛 CRÍTICO — dedupe congelava o app em base grande (55 mil clientes)
 Ao importar Clientes, o dedupe rodava **antes** do INSERT, na thread de trabalho, e
 enumerava `C(k,2)` pares para cada grupo de nome/documento igual, **sem limite**. Com

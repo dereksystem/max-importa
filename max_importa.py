@@ -373,6 +373,58 @@ class CancelavelMixin:
             command=self._fechar).pack(side="right")
         return bot
 
+    # ── Rodapé fixo das 3 telas (ancorado ao FUNDO) ─────────────────────────
+    def _montar_rodape(self, modulo, com_acerto=False):
+        """Monta todo o rodapé (contador+barra de obrigatórios, resumo, perfis,
+        barra de ação, progresso e log) dentro de um frame ancorado ao FUNDO da
+        janela (side="bottom", empacotado ANTES do scroll_map). Assim os botões de
+        ação NUNCA saem da tela em resolução baixa (1366×768): o scroll_map preenche
+        o espaço acima e ENCOLHE quando falta altura, em vez de empurrar o rodapé
+        para fora. Antes, este bloco era duplicado em cada _build e o rodapé era
+        empacotado DEPOIS do scroll (top), então era cortado em telas pequenas.
+
+        IMPORTANTE: chame este método ANTES de empacotar o scroll_map, e empacote o
+        scroll_map com side="top", fill="both", expand=True logo em seguida."""
+        rodape = ctk.CTkFrame(self, fg_color="transparent")
+        rodape.pack(side="bottom", fill="x")
+
+        rod_map = ctk.CTkFrame(rodape, fg_color="transparent")
+        rod_map.pack(padx=24, pady=(6, 0), fill="x")
+        self.map_contador = ctk.CTkLabel(
+            rod_map, text="Obrigatórios: 0 de 0",
+            font=ctk.CTkFont(size=12), text_color=("#5B6470", "#C7CCD4"))
+        self.map_contador.pack(side="left")
+        self.map_barra = ctk.CTkProgressBar(rod_map, width=150, height=7,
+                                            corner_radius=999, progress_color=MD_RED,
+                                            fg_color=("#EDEFF2", "#2A2E36"))
+        self.map_barra.set(0)
+        self.map_barra.pack(side="left", padx=(10, 0))
+
+        self.lbl_map_resumo = ctk.CTkLabel(
+            rodape, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",
+            font=ctk.CTkFont(size=11), text_color=MD_GRAY)
+        self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
+        self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
+        self._criar_barra_perfis(rodape, modulo).pack(padx=24, pady=(4, 0), anchor="w")
+
+        self._criar_barra_acoes(rodape, com_acerto=com_acerto)
+
+        self.progress = ctk.CTkProgressBar(rodape, progress_color=MD_RED)
+        self.progress.pack(padx=24, pady=(2, 0), fill="x")
+        self.progress.set(0)
+        self.lbl_progresso = ctk.CTkLabel(rodape, text="", font=ctk.CTkFont(size=11),
+                                          text_color=MD_GRAY)
+        self.lbl_progresso.pack(padx=24, pady=(1, 0))
+
+        _log_wrap = ctk.CTkFrame(rodape, fg_color="transparent")
+        _log_wrap.pack(padx=24, pady=(4, 10), fill="x")
+        ctk.CTkFrame(_log_wrap, width=4, fg_color=MD_RED, corner_radius=0).pack(
+            side="left", fill="y", padx=(0, 6))
+        self.text_log = ctk.CTkTextbox(_log_wrap, height=84,
+                                        font=ctk.CTkFont(size=11, family="Consolas"))
+        self.text_log.pack(side="left", fill="x", expand=True)
+        return rodape
+
     # ── Perfis de mapeamento (salvar/aplicar por layout de arquivo) ──────────
     # O auto-mapeamento só casa nomes IDÊNTICOS; arquivos de terceiros exigem
     # remapear tudo na mão a cada importação. O perfil guarda esse trabalho.
@@ -1416,8 +1468,8 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
         ctk.CTkLabel(self, text="Mapeamento de Colunas",
                      font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=24, pady=(4, 0))
 
-        self.scroll_map = ctk.CTkScrollableFrame(self, height=300)
-        self.scroll_map.pack(padx=24, pady=6, fill="both", expand=True)
+        # Empacotado no FIM de _build (após o rodapé fixo) — ver _montar_rodape.
+        self.scroll_map = ctk.CTkScrollableFrame(self, height=180)
 
         # Cabecalho com pack
         hdr_frame = ctk.CTkFrame(self.scroll_map, fg_color="transparent")
@@ -1505,47 +1557,10 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
                 _b.pack(side="left", padx=(8, 0))
                 self.map_badge[campo] = _b
 
-        # Botões de ação
-        # Resumo do mapeamento (atualizado a cada seleção de coluna)
-        # Rodapé do mapeamento (layout 1b): contador de obrigatórios + barra.
-        rod_map = ctk.CTkFrame(self, fg_color="transparent")
-        rod_map.pack(padx=24, pady=(8, 0), fill="x")
-        self.map_contador = ctk.CTkLabel(
-            rod_map, text="Obrigatórios: 0 de 0",
-            font=ctk.CTkFont(size=12), text_color=("#5B6470", "#C7CCD4"))
-        self.map_contador.pack(side="left")
-        self.map_barra = ctk.CTkProgressBar(rod_map, width=150, height=7,
-                                            corner_radius=999, progress_color=MD_RED,
-                                            fg_color=("#EDEFF2", "#2A2E36"))
-        self.map_barra.set(0)
-        self.map_barra.pack(side="left", padx=(10, 0))
-
-        self.lbl_map_resumo = ctk.CTkLabel(
-            self, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",
-            font=ctk.CTkFont(size=11), text_color=MD_GRAY)
-        self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
-        self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
-        self._criar_barra_perfis(self, "PRODUTOS").pack(padx=24, pady=(6, 0), anchor="w")
-
-        # Rodapé de ação padronizado (com o botão de acerto de estoque).
-        self._criar_barra_acoes(self, com_acerto=True)
-
-        # Progress
-        self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
-        self.progress.pack(padx=24, pady=(4, 0), fill="x")
-        self.progress.set(0)
-        self.lbl_progresso = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=11),
-                                          text_color=MD_GRAY)
-        self.lbl_progresso.pack(padx=24, pady=(2, 0))
-
-        # Log com borda lateral vermelha
-        _log_wrap = ctk.CTkFrame(self, fg_color="transparent")
-        _log_wrap.pack(padx=24, pady=(6, 16), fill="x")
-        ctk.CTkFrame(_log_wrap, width=4, fg_color=MD_RED, corner_radius=0).pack(
-            side="left", fill="y", padx=(0, 6))
-        self.text_log = ctk.CTkTextbox(_log_wrap, height=130,
-                                        font=ctk.CTkFont(size=11, family="Consolas"))
-        self.text_log.pack(side="left", fill="x", expand=True)
+        # Rodapé fixo (ancorado ao fundo) + o scroll preenche o meio. Empacotar o
+        # rodapé ANTES do scroll é o que impede os botões de saírem da tela.
+        self._montar_rodape("PRODUTOS", com_acerto=True)
+        self.scroll_map.pack(side="top", padx=24, pady=6, fill="both", expand=True)
 
     # ── Arquivo ───────────────────────────────────────────────────────────
     def _selecionar_arquivo(self):
@@ -1837,11 +1852,11 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
         ctk.CTkLabel(self, text="Mapeamento de Colunas",
                      font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=24, pady=(4, 0))
 
-        self.scroll_map = ctk.CTkScrollableFrame(self, height=310)
+        # Empacotado no FIM de _build (após o rodapé fixo) — ver _montar_rodape.
+        self.scroll_map = ctk.CTkScrollableFrame(self, height=180)
         self.scroll_map.columnconfigure(0, weight=1)
         self.scroll_map.columnconfigure(1, weight=0)
         self.scroll_map.columnconfigure(2, weight=0)
-        self.scroll_map.pack(padx=24, pady=6, fill="both", expand=True)
 
         # Cabeçalho
         for txt, col in [("Campo DB / Descrição", 0), ("Tabela", 1), ("Coluna do Arquivo", 2)]:
@@ -1942,45 +1957,10 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
             cb.grid(row=0, column=2, padx=(0, 8), pady=5, sticky="e")
             grid_row += 1
 
-        # Botões
-        # Resumo do mapeamento (atualizado a cada seleção de coluna)
-        # Rodapé do mapeamento (layout 1b): contador de obrigatórios + barra.
-        rod_map = ctk.CTkFrame(self, fg_color="transparent")
-        rod_map.pack(padx=24, pady=(8, 0), fill="x")
-        self.map_contador = ctk.CTkLabel(
-            rod_map, text="Obrigatórios: 0 de 0",
-            font=ctk.CTkFont(size=12), text_color=("#5B6470", "#C7CCD4"))
-        self.map_contador.pack(side="left")
-        self.map_barra = ctk.CTkProgressBar(rod_map, width=150, height=7,
-                                            corner_radius=999, progress_color=MD_RED,
-                                            fg_color=("#EDEFF2", "#2A2E36"))
-        self.map_barra.set(0)
-        self.map_barra.pack(side="left", padx=(10, 0))
-
-        self.lbl_map_resumo = ctk.CTkLabel(
-            self, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",
-            font=ctk.CTkFont(size=11), text_color=MD_GRAY)
-        self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
-        self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
-        self._criar_barra_perfis(self, "CLIENTES").pack(padx=24, pady=(6, 0), anchor="w")
-
-        # Rodapé de ação padronizado.
-        self._criar_barra_acoes(self)
-
-        # Progresso e log
-        self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
-        self.progress.pack(padx=24, pady=(4, 0), fill="x")
-        self.progress.set(0)
-        self.lbl_progresso = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=11),
-                                          text_color=MD_GRAY)
-        self.lbl_progresso.pack(padx=24, pady=(2, 0))
-        _log_wrap = ctk.CTkFrame(self, fg_color="transparent")
-        _log_wrap.pack(padx=24, pady=(6, 16), fill="x")
-        ctk.CTkFrame(_log_wrap, width=4, fg_color=MD_RED, corner_radius=0).pack(
-            side="left", fill="y", padx=(0, 6))
-        self.text_log = ctk.CTkTextbox(_log_wrap, height=130,
-                                        font=ctk.CTkFont(size=11, family="Consolas"))
-        self.text_log.pack(side="left", fill="x", expand=True)
+        # Rodapé fixo (ancorado ao fundo) + o scroll preenche o meio. Empacotar o
+        # rodapé ANTES do scroll é o que impede os botões de saírem da tela.
+        self._montar_rodape("CLIENTES")
+        self.scroll_map.pack(side="top", padx=24, pady=6, fill="both", expand=True)
 
     # ── Arquivo ───────────────────────────────────────────────────────────
     def _selecionar_arquivo(self):
@@ -2398,9 +2378,9 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         ctk.CTkLabel(self, text="Mapeamento de Colunas",
                      font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w", padx=24, pady=(4, 0))
 
-        self.scroll_map = ctk.CTkScrollableFrame(self, height=310)
+        # Empacotado no FIM de _build (após o rodapé fixo) — ver _montar_rodape.
+        self.scroll_map = ctk.CTkScrollableFrame(self, height=180)
         self.scroll_map.columnconfigure(0, weight=1)
-        self.scroll_map.pack(padx=24, pady=6, fill="both", expand=True)
 
         # Cabeçalho
         for txt, col in [("Campo DB / Descrição", 0), ("Tabela", 1), ("Coluna do Arquivo", 2)]:
@@ -2497,44 +2477,10 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
             cb.grid(row=0, column=2, padx=(0, 8), pady=5, sticky="e")
             grid_row += 1
 
-        # Rodapé do mapeamento (layout 1b): contador de obrigatórios + barra.
-        # Substitui a leitura do texto corrido por um indicador de progresso.
-        rod_map = ctk.CTkFrame(self, fg_color="transparent")
-        rod_map.pack(padx=24, pady=(8, 0), fill="x")
-        self.map_contador = ctk.CTkLabel(
-            rod_map, text="Obrigatórios: 0 de 0",
-            font=ctk.CTkFont(size=12), text_color=("#5B6470", "#C7CCD4"))
-        self.map_contador.pack(side="left")
-        self.map_barra = ctk.CTkProgressBar(rod_map, width=150, height=7,
-                                            corner_radius=999, progress_color=MD_RED,
-                                            fg_color=("#EDEFF2", "#2A2E36"))
-        self.map_barra.set(0)
-        self.map_barra.pack(side="left", padx=(10, 0))
-
-        # Resumo do mapeamento (atualizado a cada seleção de coluna)
-        self.lbl_map_resumo = ctk.CTkLabel(
-            self, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",
-            font=ctk.CTkFont(size=11), text_color=MD_GRAY)
-        self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
-        self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
-        self._criar_barra_perfis(self, "FINANCEIRO").pack(padx=24, pady=(6, 0), anchor="w")
-
-        # Rodapé de ação padronizado.
-        self._criar_barra_acoes(self)
-
-        self.progress = ctk.CTkProgressBar(self, progress_color=MD_RED)
-        self.progress.pack(padx=24, pady=(4, 0), fill="x")
-        self.progress.set(0)
-        self.lbl_progresso = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=11),
-                                          text_color=MD_GRAY)
-        self.lbl_progresso.pack(padx=24, pady=(2, 0))
-        _log_wrap = ctk.CTkFrame(self, fg_color="transparent")
-        _log_wrap.pack(padx=24, pady=(6, 16), fill="x")
-        ctk.CTkFrame(_log_wrap, width=4, fg_color=MD_RED, corner_radius=0).pack(
-            side="left", fill="y", padx=(0, 6))
-        self.text_log = ctk.CTkTextbox(_log_wrap, height=130,
-                                        font=ctk.CTkFont(size=11, family="Consolas"))
-        self.text_log.pack(side="left", fill="x", expand=True)
+        # Rodapé fixo (ancorado ao fundo) + o scroll preenche o meio. Empacotar o
+        # rodapé ANTES do scroll é o que impede os botões de saírem da tela.
+        self._montar_rodape("FINANCEIRO")
+        self.scroll_map.pack(side="top", padx=24, pady=6, fill="both", expand=True)
 
     # ── Arquivo ───────────────────────────────────────────────────────────
     def _selecionar_arquivo(self):

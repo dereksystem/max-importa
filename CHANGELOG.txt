@@ -879,6 +879,18 @@ DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+BOTOES DE ACAO SUMIAM EM RESOLUCAO BAIXA (1366x768)
+- Nas telas de importacao, o rodape (contador, perfis, barra de
+  acao, progresso, log) vinha DEPOIS do mapeamento (que tinha
+  altura minima grande). Em ~700px uteis a soma estourava e os
+  botoes ficavam abaixo da dobra, inacessiveis.
+- Novo _montar_rodape monta o rodape num frame ANCORADO AO FUNDO
+  (side=bottom, empacotado ANTES do scroll). O mapeamento
+  preenche o espaco acima e ENCOLHE quando falta altura, em vez
+  de empurrar os botoes p/ fora. Alturas minimas reduzidas
+  (mapeamento 300->180, log 130->84). O rodape, antes DUPLICADO
+  nos 3 _build, virou um metodo unico.
+
 CRITICO - dedupe congelava o app em base grande (55 mil)
 - Ao importar Clientes, o dedupe rodava ANTES do INSERT e
   enumerava C(k,2) pares por grupo de nome/documento igual, SEM
