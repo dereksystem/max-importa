@@ -8,7 +8,7 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
-## [Não liberado] — versão a definir
+## [4.0.1] — 2026-07-27
 
 ### ⚡ INSERT de Clientes e Produtos muito mais rápido (lote único)
 O INSERT de Clientes fazia ~5 idas ao banco por linha (`SET NOCOUNT`, INSERT cliente,

@@ -877,7 +877,7 @@ DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
   AGRO BRASIL LTDA). 31 testes novos.
 
 --------------------------------------------------------
- [Próxima versão] - a definir
+ [4.0.1] - 2026-07-27
 --------------------------------------------------------
 INSERT DE CLIENTES E PRODUTOS MUITO MAIS RAPIDO (lote unico)
 - O INSERT de Clientes fazia ~5 idas ao banco por linha (SET
@@ -927,3 +927,8 @@ CRITICO - dedupe congelava o app em base grande (55 mil)
   em lote) e mudanca maior no caminho transacional - passo a parte.
 - 4 testes novos (grupo grande vira resumo, teto, doc repetido,
   desempenho com 105 mil registros).
+
+--------------------------------------------------------
+ [Próxima versão] - a definir
+--------------------------------------------------------
+- (descrever aqui a próxima alteração)
