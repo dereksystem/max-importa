@@ -28,6 +28,46 @@ class ProdutosImportMixin:
         "proAtacado", "proCusto", "proEstoqueAtual", "proEstoqueMin", "proVenda"
     }
 
+    # ── INSERT combinado (otimização c): produto + produto_empresa num único batch ──
+    # O INSERT do produto já vinha com SCOPE_IDENTITY no mesmo comando; aqui o
+    # produto_empresa entra JUNTO, caindo de ~3 round-trips por linha para 1 (o
+    # codBarras segue fora, pois é condicional ao EAN e pouco frequente). Campos e
+    # semântica idênticos aos INSERTs separados de antes.
+    #
+    # Modo AUTO (proId gerado): id vem de SCOPE_IDENTITY (server-side), devolvido no fim.
+    _SQL_PROD_AUTO = (
+        "SET NOCOUNT ON;\n"
+        "DECLARE @id INT;\n"
+        "INSERT INTO produto (proDescricao, proAplicacao, proBalanca, proMedVenda,\n"
+        "  proMultiplo, proPeso, proQtdComEntrada, proUn, proTipo, proFab, proGrupo,\n"
+        "  proSubGrupo, proClasseId, proNcmId, proCestId, proUnComercialId, proUnTrib,\n"
+        "  proUnTribId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
+        "SET @id = SCOPE_IDENTITY();\n"
+        "IF @id IS NULL RAISERROR('SCOPE_IDENTITY NULL apos INSERT produto', 16, 1);\n"
+        "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = @id AND empId = ?)\n"
+        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst2,\n"
+        "    proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
+        "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
+        "    proUnTribId) VALUES (@id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
+        "SELECT @id;"
+    )
+    # Modo proId-do-arquivo (IDENTITY_INSERT ON/OFF dentro do batch): id já conhecido.
+    _SQL_PROD_ID = (
+        "SET NOCOUNT ON;\n"
+        "SET IDENTITY_INSERT produto ON;\n"
+        "IF NOT EXISTS (SELECT 1 FROM produto WHERE proId = ?)\n"
+        "  INSERT INTO produto (proId, proDescricao, proAplicacao, proBalanca, proMedVenda,\n"
+        "    proMultiplo, proPeso, proQtdComEntrada, proUn, proTipo, proFab, proGrupo,\n"
+        "    proSubGrupo, proClasseId, proNcmId, proCestId, proUnComercialId, proUnTrib,\n"
+        "    proUnTribId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
+        "SET IDENTITY_INSERT produto OFF;\n"
+        "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = ? AND empId = ?)\n"
+        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst2,\n"
+        "    proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
+        "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
+        "    proUnTribId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+    )
+
     def _inserir_produtos(self):
         cursor   = self._cursor()
         total    = len(self.df)
@@ -69,89 +109,23 @@ class ProdutosImportMixin:
                 if un_info and un_info.get("criada"):
                     uns_criadas.add(unp_un)
 
-                # ── tabela produto ──
-                if auto_id:
-                    # proId vazio → deixa o banco gerar o ID (IDENTITY) e captura
-                    # o valor gerado via SCOPE_IDENTITY() para vincular os demais
-                    # registros (produto_empresa, codBarras).
-                    # INSERT + SELECT no MESMO batch (SCOPE_IDENTITY so vale no
-                    # mesmo escopo) e SET NOCOUNT ON para as triggers AFTER da
-                    # tabela nao atrapalharem o retorno do SELECT.
-                    cursor.execute("""
-                        SET NOCOUNT ON;
-                        INSERT INTO produto (
-                            proDescricao, proAplicacao, proBalanca,
-                            proMedVenda, proMultiplo, proPeso, proQtdComEntrada,
-                            proUn, proTipo,
-                            proFab, proGrupo, proSubGrupo,
-                            proClasseId, proNcmId, proCestId,
-                            proUnComercialId, proUnTrib, proUnTribId
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
-                        SELECT SCOPE_IDENTITY();
-                    """, (
-                        self._get_str_max(row, "proDescricao", 100),
-                        self._get_str(row, "proAplicacao"),
-                        self._get_int(row, "proBalanca", 0),
-                        self._get_float(row, "proMedVenda"),
-                        self._get_float(row, "proMultiplo"),
-                        self._get_float(row, "proPeso"),
-                        self._get_float(row, "proQtdComEntrada"),
-                        pro_un_str,
-                        self._get_str_max(row, "proTipo", 1),
-                        fab_id, grupo_id, subgrupo_id,
-                        classe_id, ncm_id, cest_id,
-                        unp_id, unp_un, unp_id
-                    ))
-                    fetched = cursor.fetchone()
-                    new_id = fetched[0] if fetched else None
-                    if new_id is None:
-                        raise ValueError("SCOPE_IDENTITY() retornou NULL — INSERT do produto nao foi executado.")
-                    pro_id = int(new_id)
-                else:
-                    # proId informado no arquivo → insere o ID explicitamente.
-                    cursor.execute("SET IDENTITY_INSERT produto ON")
-                    cursor.execute("""
-                        IF NOT EXISTS (SELECT 1 FROM produto WHERE proId = ?)
-                        INSERT INTO produto (
-                            proId, proDescricao, proAplicacao, proBalanca,
-                            proMedVenda, proMultiplo, proPeso, proQtdComEntrada,
-                            proUn, proTipo,
-                            proFab, proGrupo, proSubGrupo,
-                            proClasseId, proNcmId, proCestId,
-                            proUnComercialId, proUnTrib, proUnTribId
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        pro_id,
-                        pro_id,
-                        self._get_str_max(row, "proDescricao", 100),
-                        self._get_str(row, "proAplicacao"),
-                        self._get_int(row, "proBalanca", 0),
-                        self._get_float(row, "proMedVenda"),
-                        self._get_float(row, "proMultiplo"),
-                        self._get_float(row, "proPeso"),
-                        self._get_float(row, "proQtdComEntrada"),
-                        pro_un_str,
-                        self._get_str_max(row, "proTipo", 1),
-                        fab_id, grupo_id, subgrupo_id,
-                        classe_id, ncm_id, cest_id,
-                        unp_id, unp_un, unp_id
-                    ))
-                    cursor.execute("SET IDENTITY_INSERT produto OFF")
-
-                # ── tabela produto_empresa ──
-                cursor.execute("""
-                    IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = ? AND empId = ?)
-                    INSERT INTO produto_empresa (
-                        proId, empId,
-                        proAtacado, proCodCSOSN, proCodCst2, proCodigo,
-                        proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,
-                        proLocalizador, proPrateleira, proVenda,
-                        proUn,
-                        proUnComercialId, proUnTrib, proUnTribId
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    pro_id, emp_id,
-                    pro_id, emp_id,
+                # ── produto + produto_empresa num único batch (otimização c) ──
+                # Campos do produto (18) e do produto_empresa (15) montados uma vez.
+                _pro18 = (
+                    self._get_str_max(row, "proDescricao", 100),
+                    self._get_str(row, "proAplicacao"),
+                    self._get_int(row, "proBalanca", 0),
+                    self._get_float(row, "proMedVenda"),
+                    self._get_float(row, "proMultiplo"),
+                    self._get_float(row, "proPeso"),
+                    self._get_float(row, "proQtdComEntrada"),
+                    pro_un_str,
+                    self._get_str_max(row, "proTipo", 1),
+                    fab_id, grupo_id, subgrupo_id,
+                    classe_id, ncm_id, cest_id,
+                    unp_id, unp_un, unp_id,
+                )
+                _pe15 = (
                     self._get_float(row, "proAtacado"),
                     self._get_str_max(row, "proCodCSOSN", 3),
                     self._get_str_max(row, "proCodCst2", 2),
@@ -164,8 +138,20 @@ class ProdutosImportMixin:
                     self._get_str_max(row, "proPrateleira", 20),
                     self._get_float(row, "proVenda"),
                     pro_un_str,
-                    unp_id, unp_un, unp_id
-                ))
+                    unp_id, unp_un, unp_id,
+                )
+                if auto_id:
+                    # proId gerado pelo banco: SCOPE_IDENTITY (server-side) devolve o id.
+                    cursor.execute(self._SQL_PROD_AUTO, _pro18 + (emp_id, emp_id) + _pe15)
+                    fetched = cursor.fetchone()
+                    new_id = fetched[0] if fetched else None
+                    if new_id is None:
+                        raise ValueError("SCOPE_IDENTITY() retornou NULL — INSERT do produto nao foi executado.")
+                    pro_id = int(new_id)
+                else:
+                    # proId do arquivo (IDENTITY_INSERT ON/OFF dentro do batch).
+                    cursor.execute(self._SQL_PROD_ID,
+                                   (pro_id, pro_id) + _pro18 + (pro_id, emp_id, pro_id, emp_id) + _pe15)
 
                 # ── Inserir Codigo EAN em codBarras ──────────────────────────
                 ean = self._get_str(row, "cdbCodigo")
@@ -505,6 +491,47 @@ class ProdutosImportMixin:
 
 
 class ClientesImportMixin:
+    # ── INSERT combinado (otimização c): cliente + cliente_empresa num único batch ──
+    # Antes eram ~5 round-trips por linha (SET NOCOUNT, INSERT cliente, SELECT @@IDENTITY,
+    # INSERT cliente_empresa, commit). Juntando os dois INSERTs e a captura do id num
+    # comando só, cai para 1 round-trip/linha — medido 4,2× no localhost e muito mais
+    # sobre a rede. NÃO muda a semântica: mantém @@IDENTITY (triggers), os IF NOT EXISTS
+    # e 1 transação por linha (isolamento de erro idêntico).
+    #
+    # Modo IDENTITY (cliId gerado pelo banco): o id vem de @@IDENTITY (server-side) e é
+    # devolvido pelo SELECT final. RAISERROR reproduz o "@@IDENTITY NULL → erro" antigo.
+    _SQL_CLI_IDENT = (
+        "SET NOCOUNT ON;\n"
+        "DECLARE @id INT;\n"
+        "INSERT INTO cliente (cliCpfCgc, cliNome, cliFantasia, cliRgInsc, cliFatEnd,\n"
+        "  cliFatEndNumero, cliFatBairro, cliFatCidade, cliFatUf, cliFatCep,\n"
+        "  cliFatCidCodIBGE, cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,\n"
+        "  cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
+        "SET @id = @@IDENTITY;\n"
+        "IF @id IS NULL RAISERROR('IDENTITY NULL apos INSERT cliente', 16, 1);\n"
+        "IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = @id AND empId = ?)\n"
+        "  INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,\n"
+        "    cliDescontoAutoAplicar, cliDescontoAutoAliq, cliMaxdataRateioCredito_Aliq_01,\n"
+        "    cliMaxdataRateioCredito_Aliq_02, cliMaxdataRateioCredito_Aliq_03, cliDatCad)\n"
+        "  VALUES (?, @id, ?, ?, ?, ?, ?, ?, ?);\n"
+        "SELECT @id;"
+    )
+    # Modo cliId-do-arquivo (IDENTITY_INSERT ON): o id já é conhecido, então não há
+    # @@IDENTITY; os dois IF NOT EXISTS/INSERT vão no mesmo batch.
+    _SQL_CLI_ID = (
+        "SET NOCOUNT ON;\n"
+        "IF NOT EXISTS (SELECT 1 FROM cliente WHERE cliId = ?)\n"
+        "  INSERT INTO cliente (cliId, cliCpfCgc, cliNome, cliFantasia, cliRgInsc,\n"
+        "    cliFatEnd, cliFatEndNumero, cliFatBairro, cliFatCidade, cliFatUf, cliFatCep,\n"
+        "    cliFatCidCodIBGE, cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,\n"
+        "    cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
+        "IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = ? AND empId = ?)\n"
+        "  INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,\n"
+        "    cliDescontoAutoAplicar, cliDescontoAutoAliq, cliMaxdataRateioCredito_Aliq_01,\n"
+        "    cliMaxdataRateioCredito_Aliq_02, cliMaxdataRateioCredito_Aliq_03, cliDatCad)\n"
+        "  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"
+    )
+
     def _calc_cli_tipo(self, row):
         """Define cliTipo. Se o campo estiver mapeado e preenchido, usa o valor.
         Caso contrário, deriva do cliCpfCgc: CPF (11 díg) = 0 (Pessoa Física),
@@ -712,105 +739,52 @@ class ClientesImportMixin:
 
                 data_inc = self._get_datetime(row, "DataInclusao")
 
+                # ── INSERT combinado: cliente + cliente_empresa num único batch ──
+                # (otimização c) — 1 round-trip por linha em vez de ~5. Os campos e a
+                # semântica são idênticos aos INSERTs separados de antes.
+                _zero_dec = Decimal('0.00000')
+                _campos_cli = (
+                    self._get_str_max(row, "cliCpfCgc",        20),
+                    self._get_str_max(row, "cliNome",           50),
+                    self._get_str_max(row, "cliFantasia",       50),
+                    self._get_str_max(row, "cliRgInsc",         20),
+                    self._get_str_max(row, "cliFatEnd",        120),
+                    self._get_str_max(row, "cliFatEndNumero",   10),
+                    self._get_str_max(row, "cliFatBairro",      70),
+                    self._get_str_max(row, "cliFatCidade",      30),
+                    self._get_str_max(row, "cliFatUf",           2),
+                    self._get_str_max(row, "cliFatCep",          9),
+                    self._get_str_max(row, "cliFatCidCodIBGE",  20),
+                    self._get_str_max(row, "cliEmail",         254),
+                    self._get_str_max(row, "cliFone",           20),
+                    self._get_int(row, "cliDesativa", 0),
+                    self._get_int(row, "cliTipoCad",  0),
+                    self._calc_cli_tipo(row),
+                    data_inc,
+                )
                 if usar_identity:
-                    # Tabela tem triggers — OUTPUT não é compatível.
-                    # Usamos SET NOCOUNT OFF + INSERT + SELECT @@IDENTITY
-                    # em um único batch para garantir o ID gerado.
-                    cursor.execute("SET NOCOUNT OFF")
-                    cursor.execute("""
-                        INSERT INTO cliente (
-                            cliCpfCgc, cliNome, cliFantasia, cliRgInsc,
-                            cliFatEnd, cliFatEndNumero, cliFatBairro,
-                            cliFatCidade, cliFatUf, cliFatCep,
-                            cliFatCidCodIBGE,
-                            cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,
-                            cliDatCad
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        self._get_str_max(row, "cliCpfCgc",        20),
-                        self._get_str_max(row, "cliNome",           50),
-                        self._get_str_max(row, "cliFantasia",       50),
-                        self._get_str_max(row, "cliRgInsc",         20),
-                        self._get_str_max(row, "cliFatEnd",        120),
-                        self._get_str_max(row, "cliFatEndNumero",   10),
-                        self._get_str_max(row, "cliFatBairro",      70),
-                        self._get_str_max(row, "cliFatCidade",      30),
-                        self._get_str_max(row, "cliFatUf",           2),
-                        self._get_str_max(row, "cliFatCep",          9),
-                        self._get_str_max(row, "cliFatCidCodIBGE",  20),
-                        self._get_str_max(row, "cliEmail",         254),
-                        self._get_str_max(row, "cliFone",           20),
-                        self._get_int(row, "cliDesativa", 0),
-                        self._get_int(row, "cliTipoCad",  0),
-                        self._calc_cli_tipo(row),
-                        data_inc
+                    # id vem de @@IDENTITY (server-side) e é devolvido pelo SELECT final.
+                    cursor.execute(self._SQL_CLI_IDENT, _campos_cli + (
+                        emp_id,                         # IF NOT EXISTS empId
+                        emp_id, 0, 0,                   # empId, cliCalculaIcmsSubst, cliDescontoAutoAplicar
+                        _zero_dec, _zero_dec, _zero_dec, _zero_dec,
+                        data_inc,
                     ))
-                    # @@IDENTITY funciona mesmo com triggers (pega o último ID
-                    # gerado na sessão, incluindo os disparados por triggers)
-                    cursor.execute("SELECT @@IDENTITY")
                     row_id = cursor.fetchone()[0]
                     if row_id is None:
                         raise ValueError("@@IDENTITY retornou NULL — INSERT nao foi executado.")
                     cli_id = int(row_id)
                 else:
-                    cursor.execute("""
-                        IF NOT EXISTS (SELECT 1 FROM cliente WHERE cliId = ?)
-                        INSERT INTO cliente (
-                            cliId,
-                            cliCpfCgc, cliNome, cliFantasia, cliRgInsc,
-                            cliFatEnd, cliFatEndNumero, cliFatBairro,
-                            cliFatCidade, cliFatUf, cliFatCep,
-                            cliFatCidCodIBGE,
-                            cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,
-                            cliDatCad
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        cli_id,
-                        cli_id,
-                        self._get_str_max(row, "cliCpfCgc",        20),
-                        self._get_str_max(row, "cliNome",           50),
-                        self._get_str_max(row, "cliFantasia",       50),
-                        self._get_str_max(row, "cliRgInsc",         20),
-                        self._get_str_max(row, "cliFatEnd",        120),
-                        self._get_str_max(row, "cliFatEndNumero",   10),
-                        self._get_str_max(row, "cliFatBairro",      70),
-                        self._get_str_max(row, "cliFatCidade",      30),
-                        self._get_str_max(row, "cliFatUf",           2),
-                        self._get_str_max(row, "cliFatCep",          9),
-                        self._get_str_max(row, "cliFatCidCodIBGE",  20),
-                        self._get_str_max(row, "cliEmail",         254),
-                        self._get_str_max(row, "cliFone",           20),
-                        self._get_int(row, "cliDesativa", 0),
-                        self._get_int(row, "cliTipoCad",  0),
-                        self._calc_cli_tipo(row),
-                        data_inc
+                    # cliId conhecido (do arquivo, IDENTITY_INSERT ON): sem @@IDENTITY.
+                    cursor.execute(self._SQL_CLI_ID, (
+                        cli_id,                         # IF NOT EXISTS cliente
+                        cli_id,                         # cliId (VALUES)
+                    ) + _campos_cli + (
+                        cli_id, emp_id,                 # IF NOT EXISTS cliente_empresa
+                        emp_id, cli_id, 0, 0,           # empId, cliId, cliCalculaIcmsSubst, cliDescontoAutoAplicar
+                        _zero_dec, _zero_dec, _zero_dec, _zero_dec,
+                        data_inc,
                     ))
-
-                # ── cliente_empresa ──────────────────────────────────────────
-                _zero_dec = Decimal('0.00000')
-                cursor.execute("""
-                    IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = ? AND empId = ?)
-                    INSERT INTO cliente_empresa (
-                        empId, cliId,
-                        cliCalculaIcmsSubst,
-                        cliDescontoAutoAplicar,
-                        cliDescontoAutoAliq,
-                        cliMaxdataRateioCredito_Aliq_01,
-                        cliMaxdataRateioCredito_Aliq_02,
-                        cliMaxdataRateioCredito_Aliq_03,
-                        cliDatCad
-                    ) VALUES (?,?,?,?,?,?,?,?,?)
-                """, (
-                    cli_id, emp_id,
-                    emp_id, cli_id,
-                    0,          # cliCalculaIcmsSubst   int
-                    0,          # cliDescontoAutoAplicar bit
-                    _zero_dec,  # cliDescontoAutoAliq            decimal(18,5)
-                    _zero_dec,  # cliMaxdataRateioCredito_Aliq_01 decimal(18,5)
-                    _zero_dec,  # cliMaxdataRateioCredito_Aliq_02 decimal(18,5)
-                    _zero_dec,  # cliMaxdataRateioCredito_Aliq_03 decimal(18,5)
-                    data_inc
-                ))
 
                 self.conn.commit()
                 sucessos += 1

@@ -10,6 +10,24 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ## [Não liberado] — versão a definir
 
+### ⚡ INSERT de Clientes e Produtos muito mais rápido (lote único)
+O INSERT de Clientes fazia ~5 idas ao banco por linha (`SET NOCOUNT`, INSERT cliente,
+`SELECT @@IDENTITY`, INSERT cliente_empresa, commit). O gargalo não era o commit — eram
+os **round-trips**. Medido contra o banco (tabelas imitando cliente + cliente_empresa):
+**~4,2× no localhost**, e o ganho é muito maior sobre a rede (a latência é paga por
+round-trip).
+- **Clientes:** os dois INSERTs e a captura do id foram unidos num **único comando por
+  linha** (`_SQL_CLI_IDENT` no modo identity, `_SQL_CLI_ID` no modo cliId-do-arquivo).
+  Mantém `@@IDENTITY` (semântica com triggers), os `IF NOT EXISTS` e **1 transação por
+  linha** — o isolamento de erro é idêntico ao de antes.
+- **Produtos:** o `produto_empresa` entrou no mesmo batch do INSERT do produto (que já
+  vinha com `SCOPE_IDENTITY`); o `SET IDENTITY_INSERT ON/OFF` do modo cliId virou parte
+  do batch. O `codBarras` segue como execute à parte, por ser condicional ao EAN.
+- Validado contra o banco (com rollback): os dois modos de cada tela criam
+  `cliente`/`cliente_empresa` e `produto`/`produto_empresa` corretamente, devolvem o id
+  gerado e **não duplicam** ao reexecutar (IF NOT EXISTS). Testes de integração de
+  produtos/clientes/migração verdes.
+
 ### 🐛 Botões de ação sumiam em resolução baixa (1366×768)
 Nas telas de importação, tudo era empacotado de cima para baixo e o rodapé (contador,
 perfis, **barra de ação**, progresso, log) vinha **depois** do mapeamento — que tinha

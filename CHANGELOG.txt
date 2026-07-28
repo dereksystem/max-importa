@@ -879,6 +879,23 @@ DEDUPE INTELIGENTE DE CLIENTES (aponta, nunca funde)
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
+INSERT DE CLIENTES E PRODUTOS MUITO MAIS RAPIDO (lote unico)
+- O INSERT de Clientes fazia ~5 idas ao banco por linha (SET
+  NOCOUNT, INSERT cliente, SELECT @@IDENTITY, INSERT
+  cliente_empresa, commit). O gargalo eram os ROUND-TRIPS, nao o
+  commit. Medido: ~4,2x no localhost, muito mais sobre a rede.
+- Clientes: os 2 INSERTs + a captura do id foram unidos num
+  UNICO comando por linha (_SQL_CLI_IDENT / _SQL_CLI_ID). Mantem
+  @@IDENTITY (triggers), os IF NOT EXISTS e 1 transacao por linha
+  (isolamento de erro identico).
+- Produtos: o produto_empresa entrou no mesmo batch do INSERT do
+  produto (que ja tinha SCOPE_IDENTITY); o SET IDENTITY_INSERT
+  ON/OFF do modo cliId virou parte do batch. codBarras segue
+  como execute a parte (condicional ao EAN).
+- Validado contra o banco (rollback): os 2 modos de cada tela
+  criam cliente/cliente_empresa e produto/produto_empresa, devolvem
+  o id e NAO duplicam ao reexecutar. Integracao verde.
+
 BOTOES DE ACAO SUMIAM EM RESOLUCAO BAIXA (1366x768)
 - Nas telas de importacao, o rodape (contador, perfis, barra de
   acao, progresso, log) vinha DEPOIS do mapeamento (que tinha
