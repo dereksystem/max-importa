@@ -11,6 +11,7 @@ Dois invariantes:
 """
 import os
 import sys
+import time
 import types
 
 import pytest
@@ -420,3 +421,69 @@ def test_aviso_financeiro_cancelado_aborta(root, host, monkeypatch):
     h.df = pd.DataFrame([{"x": 1}])
     assert M.JanelaFinanceiro._avisar_multiloja_financeiro(h) is False
     assert any("empId" in l for l in h.logs)
+
+
+def _medir_botoes(root, h, n_emp):
+    """Abre o diálogo, ESPERA ele ser mapeado e devolve a geometria dos botões.
+
+    ⚠️ A espera acontece ENTRE callbacks `after`, não dentro de um: o mapeamento da
+    janela é assíncrono e chamar `update()` recursivamente de dentro de um callback
+    não o processa — `winfo_ismapped()` fica 0 e o teste acusaria um bug inexistente.
+    Devolver o controle ao laço de eventos do `wait_window` é o que faz funcionar.
+    """
+    medido = {}
+    estado = {"n": 0}
+
+    def _passo():
+        dlgs = _toplevels(h) or _toplevels(root)
+        if not dlgs:
+            estado["n"] += 1
+            if estado["n"] < 100:
+                root.after(30, _passo)
+            return
+        dlg = dlgs[-1]
+        estado["n"] += 1
+        botoes = _achar(dlg, "CTkButton")
+        # ⚠️ Esperar a JANELA ficar mapeada não basta: medido, ela reporta mapped=1 uma
+        # rodada ANTES dos botões. Quem tem de estar pronto é o que se vai medir.
+        pronto = bool(botoes) and all(b.winfo_ismapped() and b.winfo_height() > 1
+                                      for b in botoes)
+        if not pronto and estado["n"] < 100:
+            root.after(30, _passo)          # volta ao laço de eventos
+            return
+        # Estourou o orçamento (~3s) sem assentar: mede assim mesmo, para a asserção
+        # mostrar o estado real em vez de o teste sumir num timeout.
+        alt = dlg.winfo_height()
+        for b in _achar(dlg, "CTkButton"):
+            medido[b.cget("text")] = (b.winfo_ismapped(),
+                                      b.winfo_rooty() - dlg.winfo_rooty(),
+                                      b.winfo_height(), alt)
+        dlg.destroy()
+
+    root.after(100, _passo)
+    h._selecionar_empresas()
+    return medido
+
+
+@pytest.mark.parametrize("n_emp", [2, 3, 5, 12])
+def test_dialogo_botoes_ficam_VISIVEIS(root, host, n_emp):
+    """Os botões precisam estar na TELA, não apenas existir na árvore de widgets.
+
+    ⚠️ Esta é a lição do bug reportado em uso real: os testes anteriores achavam os
+    botões e chamavam `.invoke()` — que funciona perfeitamente num widget espremido a
+    1 px de altura. A janela abria "sem botões" e a suíte seguia verde. Com 5 empresas
+    sobrava altura e o bug sumia, o que tornava fácil não perceber.
+
+    Causa: o corpo rolável era empacotado com `expand=True` ANTES do rodapé, então
+    consumia todo o espaço e sobrava 1 px para os botões.
+    """
+    h = host([(i, f"EMPRESA {i}") for i in range(1, n_emp + 1)])
+    medido = _medir_botoes(root, h, n_emp)
+
+    assert set(medido) == {"Continuar", "Cancelar"}, f"botões encontrados: {list(medido)}"
+    for nome, (mapped, y, altura_btn, alt_janela) in medido.items():
+        assert mapped, f"'{nome}' não está mapeado na tela"
+        assert altura_btn > 1, (
+            f"'{nome}' foi espremido a {altura_btn}px — existe, mas não aparece")
+        assert 0 <= y and y + altura_btn <= alt_janela, (
+            f"'{nome}' ocupa y={y}..{y + altura_btn} numa janela de {alt_janela}px")

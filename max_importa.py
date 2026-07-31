@@ -272,7 +272,6 @@ class CancelavelMixin:
         dlg = ctk.CTkToplevel(self)
         dlg.title("Banco multi-loja")
         dlg.resizable(False, False)
-        centralizar(dlg, 620, 190 + 34 * len(empresas))
         dlg.transient(self.winfo_toplevel())
         dlg.grab_set()
 
@@ -291,8 +290,15 @@ class CancelavelMixin:
                   "A visibilidade já configurada (empresaFiltro) não é alterada."),
         ).pack(anchor="w", pady=(4, 0))
 
-        corpo = ctk.CTkScrollableFrame(dlg, fg_color=("#FFFFFF", "#1B1E24"), height=34 * len(empresas))
-        corpo.pack(fill="both", expand=True, padx=20, pady=8)
+        # ⚠️ O rodapé é empacotado ANTES do corpo, ancorado ao fundo. Com `expand=True`,
+        # o corpo fica com TODO o espaço livre; se ele vier primeiro, o rodapé é
+        # espremido a 1 px e os botões somem — foi o que aconteceu com 2 e 3 empresas
+        # (com 5 sobrava altura e o bug não aparecia). Mesma regra do `_montar_rodape`.
+        rod = ctk.CTkFrame(dlg, fg_color="transparent")
+        rod.pack(side="bottom", fill="x", padx=20, pady=(4, 16))
+
+        corpo = ctk.CTkScrollableFrame(dlg, fg_color=("#FFFFFF", "#1B1E24"),
+                                       height=34 * len(empresas))
 
         hdr = ctk.CTkFrame(corpo, fg_color="transparent")
         hdr.pack(fill="x")
@@ -328,9 +334,6 @@ class CancelavelMixin:
             vars_emp[emp["cofId"]] = v
             _linha(v, str(emp["cofId"]), emp["cofEmpFantasia"], _revisar_todas)
 
-        rod = ctk.CTkFrame(dlg, fg_color="transparent")
-        rod.pack(fill="x", padx=20, pady=(4, 16))
-
         def _confirmar():
             if not any(v.get() for v in vars_emp.values()):
                 messagebox.showwarning("Nenhuma empresa",
@@ -345,6 +348,16 @@ class CancelavelMixin:
         ctk.CTkButton(rod, text="Cancelar", width=110, height=34, fg_color="transparent",
                       border_width=1, text_color=TC_TEXT_MAIN, corner_radius=9,
                       command=dlg.destroy).pack(side="left", padx=(8, 0))
+
+        # O corpo entra por ÚLTIMO (ver o comentário do rodapé) e ocupa o que sobrar.
+        corpo.pack(side="top", fill="both", expand=True, padx=20, pady=8)
+
+        # A altura vem do próprio Tk, não de uma fórmula: `190 + 34 * n` subestimava o
+        # conteúdo real e a janela nascia baixa demais. Teto de 80% da tela para muitas
+        # empresas — daí em diante o corpo rola.
+        dlg.update_idletasks()
+        altura = min(dlg.winfo_reqheight(), int(dlg.winfo_screenheight() * 0.8))
+        centralizar(dlg, 620, altura)
 
         dlg.wait_window()
         if not resultado["ok"]:
