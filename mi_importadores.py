@@ -17,6 +17,7 @@ from decimal import Decimal
 from mi_report import _pos_importacao, _exportar_duplicados
 from mi_db import MapeamentoDBMixin
 import mi_validacao as val   # regras de negócio puras (CPF/CNPJ, e-mail, faixas)
+import mi_multiloja           # empresas (config) e visibilidade (empresaFiltro)
 
 
 class ProdutosImportMixin:
@@ -60,8 +61,26 @@ class ProdutosImportMixin:
     # codBarras segue fora, pois é condicional ao EAN e pouco frequente). Campos e
     # semântica idênticos aos INSERTs separados de antes.
     #
-    # Modo AUTO (proId gerado): id vem de SCOPE_IDENTITY (server-side), devolvido no fim.
-    _SQL_PROD_AUTO = (
+    # ⚠️ MULTI-LOJA: o bloco do produto_empresa é REPETIDO uma vez por empresa, dentro
+    # do MESMO comando — com 3 lojas continua 1 round-trip por produto, não 3. Com uma
+    # empresa (o caso comum) o SQL gerado é idêntico ao de antes do multi-loja.
+    _PE_COLS = (
+        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst1,\n"
+        "    proCodCst2, proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
+        "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
+        "    proUnTribId) VALUES ("
+    )
+    # No modo AUTO o id vem de @id (SCOPE_IDENTITY); no modo ID ele é passado como ?.
+    _PE_BLOCO_AUTO = (
+        "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = @id AND empId = ?)\n"
+        + _PE_COLS + "@id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
+    )
+    _PE_BLOCO_ID = (
+        "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = ? AND empId = ?)\n"
+        + _PE_COLS + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
+    )
+
+    _SQL_PROD_AUTO_PRE = (
         "SET NOCOUNT ON;\n"
         "DECLARE @id INT;\n"
         "INSERT INTO produto (proDescricao, proAplicacao, proBalanca, proMedVenda,\n"
@@ -70,15 +89,8 @@ class ProdutosImportMixin:
         "  proUnTribId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
         "SET @id = SCOPE_IDENTITY();\n"
         "IF @id IS NULL RAISERROR('SCOPE_IDENTITY NULL apos INSERT produto', 16, 1);\n"
-        "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = @id AND empId = ?)\n"
-        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst1,\n"
-        "    proCodCst2, proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
-        "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
-        "    proUnTribId) VALUES (@id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
-        "SELECT @id;"
     )
-    # Modo proId-do-arquivo (IDENTITY_INSERT ON/OFF dentro do batch): id já conhecido.
-    _SQL_PROD_ID = (
+    _SQL_PROD_ID_PRE = (
         "SET NOCOUNT ON;\n"
         "SET IDENTITY_INSERT produto ON;\n"
         "IF NOT EXISTS (SELECT 1 FROM produto WHERE proId = ?)\n"
@@ -87,21 +99,36 @@ class ProdutosImportMixin:
         "    proSubGrupo, proClasseId, proNcmId, proCestId, proUnComercialId, proUnTrib,\n"
         "    proUnTribId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
         "SET IDENTITY_INSERT produto OFF;\n"
-        "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = ? AND empId = ?)\n"
-        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst1,\n"
-        "    proCodCst2, proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
-        "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
-        "    proUnTribId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
     )
+
+    @classmethod
+    def _sql_prod(cls, auto_id: bool, n_emp: int) -> str:
+        """SQL do INSERT combinado para `n_emp` empresas (memoizado por (modo, n))."""
+        cache = cls.__dict__.get("_SQL_PROD_CACHE")
+        if cache is None:
+            cache = {}
+            cls._SQL_PROD_CACHE = cache
+        chave = (auto_id, n_emp)
+        if chave not in cache:
+            if auto_id:
+                cache[chave] = (cls._SQL_PROD_AUTO_PRE
+                                + cls._PE_BLOCO_AUTO * n_emp + "SELECT @id;")
+            else:
+                cache[chave] = cls._SQL_PROD_ID_PRE + cls._PE_BLOCO_ID * n_emp
+        return cache[chave]
 
     def _inserir_produtos(self):
         cursor   = self._cursor()
         total    = len(self.df)
         sucessos = 0
         erros    = 0
-        emp_id   = self._get_emp_id(cursor)
+        emps_todas, emps_alvo = self._resolver_empresas(cursor)
+        emp_id   = emps_todas[0]
         self._lookup_cache = {}   # cache de lookups (NCM/CEST) por execução
 
+        if len(emps_todas) > 1:
+            self._log(f"🏬 Multi-loja: produto_empresa em {len(emps_todas)} empresa(s) "
+                      f"{emps_todas} | visível em {emps_alvo}")
         self._log(f"🔄 Iniciando INSERT — {total} registros | empId={emp_id}")
 
         nomes_erro = []       # nomes dos produtos que deram erro na importacao
@@ -168,9 +195,13 @@ class ProdutosImportMixin:
                     pro_un_str,
                     unp_id, unp_un, unp_id,
                 )
+                # Um bloco de produto_empresa por empresa, no MESMO comando.
                 if auto_id:
                     # proId gerado pelo banco: SCOPE_IDENTITY (server-side) devolve o id.
-                    cursor.execute(self._SQL_PROD_AUTO, _pro18 + (emp_id, emp_id) + _pe16)
+                    _pe = ()
+                    for _emp in emps_todas:
+                        _pe += (_emp, _emp) + _pe16
+                    cursor.execute(self._sql_prod(True, len(emps_todas)), _pro18 + _pe)
                     fetched = cursor.fetchone()
                     new_id = fetched[0] if fetched else None
                     if new_id is None:
@@ -178,8 +209,19 @@ class ProdutosImportMixin:
                     pro_id = int(new_id)
                 else:
                     # proId do arquivo (IDENTITY_INSERT ON/OFF dentro do batch).
-                    cursor.execute(self._SQL_PROD_ID,
-                                   (pro_id, pro_id) + _pro18 + (pro_id, emp_id, pro_id, emp_id) + _pe16)
+                    _pe = ()
+                    for _emp in emps_todas:
+                        _pe += (pro_id, _emp, pro_id, _emp) + _pe16
+                    cursor.execute(self._sql_prod(False, len(emps_todas)),
+                                   (pro_id, pro_id) + _pro18 + _pe)
+
+                # ── Visibilidade por loja (empresaFiltro) ────────────────────
+                # As linhas de produto_empresa nascem em TODAS as empresas; quem define
+                # onde o produto aparece é este vínculo, só nas marcadas.
+                if len(emps_todas) > 1:
+                    mi_multiloja.registrar_filtro(
+                        cursor, emps_alvo, *mi_multiloja.TABELA_POR_MODULO["PRODUTOS"],
+                        pro_id)
 
                 # ── Inserir Codigo EAN em codBarras ──────────────────────────
                 ean = self._get_str(row, "cdbCodigo")
@@ -251,9 +293,13 @@ class ProdutosImportMixin:
         total    = len(self.df)
         sucessos = 0
         erros    = 0
-        emp_id   = self._get_emp_id(cursor)
+        _emps_todas, emps_alvo = self._resolver_empresas(cursor)
+        emp_id   = emps_alvo[0]
         self._lookup_cache = {}   # cache de lookups (NCM/CEST) por execução
 
+        if len(_emps_todas) > 1:
+            self._log(f"🏬 Multi-loja: alterando os dados nas empresas {emps_alvo} "
+                      f"(o empresaFiltro NÃO é tocado no UPDATE)")
         self._log(f"🔄 Iniciando UPDATE — {total} registros | empId={emp_id}")
 
         nomes_erro = []       # nomes dos produtos que deram erro na atualizacao
@@ -349,10 +395,11 @@ class ProdutosImportMixin:
                     set_emp.append("proUnTribId = ?");      vals_emp.append(un_info_upd["unpId"])
 
                 if set_emp:
+                    _in = ",".join("?" * len(emps_alvo))
                     cursor.execute(
                         f"UPDATE produto_empresa SET {', '.join(set_emp)} "
-                        f"WHERE proId = ? AND empId = ?",
-                        vals_emp + [pro_id, emp_id]
+                        f"WHERE proId = ? AND empId IN ({_in})",
+                        vals_emp + [pro_id] + list(emps_alvo)
                     )
 
                 self.conn.commit()
@@ -525,6 +572,40 @@ class ClientesImportMixin:
     # sobre a rede. NÃO muda a semântica: mantém @@IDENTITY (triggers), os IF NOT EXISTS
     # e 1 transação por linha (isolamento de erro idêntico).
     #
+    # ⚠️ MULTI-LOJA: como em Produtos, o bloco do cliente_empresa é REPETIDO uma vez por
+    # empresa dentro do MESMO comando — 1 round-trip por cliente, não N. Com uma empresa
+    # o SQL gerado é idêntico ao de antes do multi-loja.
+    _CE_BLOCO_IDENT = (
+        "IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = @id AND empId = ?)\n"
+        "  INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,\n"
+        "    cliDescontoAutoAplicar, cliDescontoAutoAliq, cliMaxdataRateioCredito_Aliq_01,\n"
+        "    cliMaxdataRateioCredito_Aliq_02, cliMaxdataRateioCredito_Aliq_03, cliDatCad)\n"
+        "  VALUES (?, @id, ?, ?, ?, ?, ?, ?, ?);\n"
+    )
+    _CE_BLOCO_ID = (
+        "IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = ? AND empId = ?)\n"
+        "  INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,\n"
+        "    cliDescontoAutoAplicar, cliDescontoAutoAliq, cliMaxdataRateioCredito_Aliq_01,\n"
+        "    cliMaxdataRateioCredito_Aliq_02, cliMaxdataRateioCredito_Aliq_03, cliDatCad)\n"
+        "  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
+    )
+
+    @classmethod
+    def _sql_cli(cls, identity: bool, n_emp: int) -> str:
+        """SQL do INSERT combinado de clientes para `n_emp` empresas (memoizado)."""
+        cache = cls.__dict__.get("_SQL_CLI_CACHE")
+        if cache is None:
+            cache = {}
+            cls._SQL_CLI_CACHE = cache
+        chave = (identity, n_emp)
+        if chave not in cache:
+            if identity:
+                cache[chave] = (cls._SQL_CLI_IDENT
+                                + cls._CE_BLOCO_IDENT * n_emp + "SELECT @id;")
+            else:
+                cache[chave] = cls._SQL_CLI_ID + cls._CE_BLOCO_ID * n_emp
+        return cache[chave]
+
     # Modo IDENTITY (cliId gerado pelo banco): o id vem de @@IDENTITY (server-side) e é
     # devolvido pelo SELECT final. RAISERROR reproduz o "@@IDENTITY NULL → erro" antigo.
     _SQL_CLI_IDENT = (
@@ -536,12 +617,6 @@ class ClientesImportMixin:
         "  cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
         "SET @id = @@IDENTITY;\n"
         "IF @id IS NULL RAISERROR('IDENTITY NULL apos INSERT cliente', 16, 1);\n"
-        "IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = @id AND empId = ?)\n"
-        "  INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,\n"
-        "    cliDescontoAutoAplicar, cliDescontoAutoAliq, cliMaxdataRateioCredito_Aliq_01,\n"
-        "    cliMaxdataRateioCredito_Aliq_02, cliMaxdataRateioCredito_Aliq_03, cliDatCad)\n"
-        "  VALUES (?, @id, ?, ?, ?, ?, ?, ?, ?);\n"
-        "SELECT @id;"
     )
     # Modo cliId-do-arquivo (IDENTITY_INSERT ON): o id já é conhecido, então não há
     # @@IDENTITY; os dois IF NOT EXISTS/INSERT vão no mesmo batch.
@@ -552,11 +627,6 @@ class ClientesImportMixin:
         "    cliFatEnd, cliFatEndNumero, cliFatBairro, cliFatCidade, cliFatUf, cliFatCep,\n"
         "    cliFatCidCodIBGE, cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,\n"
         "    cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
-        "IF NOT EXISTS (SELECT 1 FROM cliente_empresa WHERE cliId = ? AND empId = ?)\n"
-        "  INSERT INTO cliente_empresa (empId, cliId, cliCalculaIcmsSubst,\n"
-        "    cliDescontoAutoAplicar, cliDescontoAutoAliq, cliMaxdataRateioCredito_Aliq_01,\n"
-        "    cliMaxdataRateioCredito_Aliq_02, cliMaxdataRateioCredito_Aliq_03, cliDatCad)\n"
-        "  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"
     )
 
     def _calc_cli_tipo(self, row):
@@ -647,8 +717,12 @@ class ClientesImportMixin:
 
         # Cursor normal para DML (INSERT/SELECT com transação)
         cursor = self._cursor()
-        emp_id = self._get_emp_id(cursor)
+        emps_todas, emps_alvo = self._resolver_empresas(cursor)
+        emp_id = emps_todas[0]
 
+        if len(emps_todas) > 1:
+            self._log(f"🏬 Multi-loja: cliente_empresa em {len(emps_todas)} empresa(s) "
+                      f"{emps_todas} | visível em {emps_alvo}")
         self._log(f"Iniciando INSERT clientes — {total} registros | empId={emp_id}")
         self._analisar_duplicados(cursor)
 
@@ -791,27 +865,41 @@ class ClientesImportMixin:
                 )
                 if usar_identity:
                     # id vem de @@IDENTITY (server-side) e é devolvido pelo SELECT final.
-                    cursor.execute(self._SQL_CLI_IDENT, _campos_cli + (
-                        emp_id,                         # IF NOT EXISTS empId
-                        emp_id, 0, 0,                   # empId, cliCalculaIcmsSubst, cliDescontoAutoAplicar
-                        _zero_dec, _zero_dec, _zero_dec, _zero_dec,
-                        data_inc,
-                    ))
+                    # Um bloco de cliente_empresa por empresa, no MESMO comando.
+                    _ce = ()
+                    for _emp in emps_todas:
+                        _ce += (
+                            _emp,                       # IF NOT EXISTS empId
+                            _emp, 0, 0,                 # empId, cliCalculaIcmsSubst, cliDescontoAutoAplicar
+                            _zero_dec, _zero_dec, _zero_dec, _zero_dec,
+                            data_inc,
+                        )
+                    cursor.execute(self._sql_cli(True, len(emps_todas)),
+                                   _campos_cli + _ce)
                     row_id = cursor.fetchone()[0]
                     if row_id is None:
                         raise ValueError("@@IDENTITY retornou NULL — INSERT nao foi executado.")
                     cli_id = int(row_id)
                 else:
                     # cliId conhecido (do arquivo, IDENTITY_INSERT ON): sem @@IDENTITY.
-                    cursor.execute(self._SQL_CLI_ID, (
+                    _ce = ()
+                    for _emp in emps_todas:
+                        _ce += (
+                            cli_id, _emp,               # IF NOT EXISTS cliente_empresa
+                            _emp, cli_id, 0, 0,         # empId, cliId, cliCalculaIcmsSubst, cliDescontoAutoAplicar
+                            _zero_dec, _zero_dec, _zero_dec, _zero_dec,
+                            data_inc,
+                        )
+                    cursor.execute(self._sql_cli(False, len(emps_todas)), (
                         cli_id,                         # IF NOT EXISTS cliente
                         cli_id,                         # cliId (VALUES)
-                    ) + _campos_cli + (
-                        cli_id, emp_id,                 # IF NOT EXISTS cliente_empresa
-                        emp_id, cli_id, 0, 0,           # empId, cliId, cliCalculaIcmsSubst, cliDescontoAutoAplicar
-                        _zero_dec, _zero_dec, _zero_dec, _zero_dec,
-                        data_inc,
-                    ))
+                    ) + _campos_cli + _ce)
+
+                # ── Visibilidade por loja (empresaFiltro) ────────────────────
+                if len(emps_todas) > 1:
+                    mi_multiloja.registrar_filtro(
+                        cursor, emps_alvo, *mi_multiloja.TABELA_POR_MODULO["CLIENTES"],
+                        cli_id)
 
                 self.conn.commit()
                 sucessos += 1
@@ -884,8 +972,11 @@ class ClientesImportMixin:
         sucessos = 0
         erros    = 0
         nao_enc  = 0
-        emp_id   = self._get_emp_id(cursor)
+        _emps_todas, emps_alvo = self._resolver_empresas(cursor)
+        emp_id   = emps_alvo[0]
 
+        if len(_emps_todas) > 1:
+            self._log(f"🏬 Multi-loja: alterando os dados nas empresas {emps_alvo}")
         self._log(f"Iniciando UPDATE por CPF/CNPJ — {total} registros | empId={emp_id}")
 
         nomes_erro = []       # nomes dos clientes que deram erro na atualizacao
@@ -966,8 +1057,8 @@ class ClientesImportMixin:
                 if set_emp:
                     cursor.execute(
                         f"UPDATE cliente_empresa SET {', '.join(set_emp)} "
-                        f"WHERE cliId = ? AND empId = ?",
-                        vals_emp + [cli_id, emp_id]
+                        f"WHERE cliId = ? AND empId IN ({','.join('?' * len(emps_alvo))})",
+                        vals_emp + [cli_id] + list(emps_alvo)
                     )
 
                 self.conn.commit()
@@ -997,8 +1088,12 @@ class ClientesImportMixin:
         total    = len(self.df)
         sucessos = 0
         erros    = 0
-        emp_id   = self._get_emp_id(cursor)
+        _emps_todas, emps_alvo = self._resolver_empresas(cursor)
+        emp_id   = emps_alvo[0]
 
+        if len(_emps_todas) > 1:
+            self._log(f"🏬 Multi-loja: alterando os dados nas empresas {emps_alvo} "
+                      f"(o empresaFiltro NÃO é tocado no UPDATE)")
         self._log(f"Iniciando UPDATE clientes — {total} registros | empId={emp_id}")
 
         nomes_erro = []       # nomes dos clientes que deram erro na atualizacao
@@ -1070,8 +1165,8 @@ class ClientesImportMixin:
                 if set_emp:
                     cursor.execute(
                         f"UPDATE cliente_empresa SET {', '.join(set_emp)} "
-                        f"WHERE cliId = ? AND empId = ?",
-                        vals_emp + [cli_id, emp_id]
+                        f"WHERE cliId = ? AND empId IN ({','.join('?' * len(emps_alvo))})",
+                        vals_emp + [cli_id] + list(emps_alvo)
                     )
 
                 self.conn.commit()
@@ -1154,6 +1249,11 @@ class FinanceiroImportMixin:
         nao_enc    = 0
         duplicados = 0
         emp_id     = self._get_emp_id(rd)
+        # vendaPgto NÃO é replicado por loja: cada título pertence a UMA empresa, que
+        # vem do próprio arquivo (campo empId). Sem o campo, cai no padrão histórico.
+        _emps_validas = {e["cofId"] for e in mi_multiloja.listar_empresas(rd)}
+        _emp_do_arquivo = "empId" in self.mapping
+        _emp_invalidos = 0
         dedup_on   = bool(getattr(self, "_dedup_financeiro", False))
         dry_run    = bool(getattr(self, "_dry_run", False))
 
@@ -1246,6 +1346,30 @@ class FinanceiroImportMixin:
                 self._set_progresso(idx + 1, total)
                 continue
 
+            # ── empId da linha (antes do dedupe: a idempotência é POR empresa) ──
+            # empId da linha: o do arquivo quando informado; senão o padrão.
+            emp_linha = emp_id
+            if _emp_do_arquivo:
+                _e = self._get_int(row, "empId")
+                if _e is None:
+                    emp_linha = mi_multiloja.EMP_ID_PADRAO_FINANCEIRO
+                elif _emps_validas and _e not in _emps_validas:
+                    # Gravar título numa empresa inexistente cria órfão difícil de achar
+                    # depois — a linha é pulada e entra no arquivo de erros.
+                    _emp_invalidos += 1
+                    linha_dict = {c: row.get(col, "") for c, col in self.mapping.items()}
+                    linha_dict["_linha"]   = idx + 2
+                    linha_dict["_cpfcnpj"] = cpf_cnpj or ""
+                    linha_dict["_motivo"]  = f"empId {_e} nao existe na config do destino"
+                    self.nao_encontrados.append(linha_dict)
+                    if _emp_invalidos <= 5:
+                        self._log(f"⚠️  Linha {idx+2}: empId {_e} nao existe na config — "
+                                  f"linha pulada.")
+                    self._set_progresso(idx + 1, total)
+                    continue
+                else:
+                    emp_linha = _e
+
             # ── Converte tipos ─────────────────────────────────────────────
             pgt_valor      = self._get_decimal(row, "pgtValor")
             pgt_data       = self._get_datetime(row, "pgtData")
@@ -1287,7 +1411,7 @@ class FinanceiroImportMixin:
                     "AND pgtValor = ? AND pgtData = ? AND pgtVecmto = ? "
                     "AND ISNULL(pgtNumDoc,'') = ISNULL(?,'') "
                     "AND ISNULL(pgtTipoConta,'') = ISNULL(?,'')",
-                    (emp_id, cli_id, pgt_valor, pgt_data, pgt_vecmto,
+                    (emp_linha, cli_id, pgt_valor, pgt_data, pgt_vecmto,
                      pgt_numdoc, pgt_tipoconta))
                 if rd.fetchone():
                     duplicados += 1
@@ -1297,7 +1421,7 @@ class FinanceiroImportMixin:
                     pend.add(chave)
 
             vals = (
-                emp_id, cli_id,
+                emp_linha, cli_id,
                 self._get_str_max(row, "pgtCliNome", 50),
                 pgt_tipo_vista, pgt_tipo_prazo, pgt_valor, pgt_numdoc,
                 pgt_data, pgt_vecmto,

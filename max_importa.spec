@@ -26,6 +26,7 @@ a = Analysis(
         'mi_validacao',     # módulo próprio (regras de validação puras)
         'mi_arquivo',       # módulo próprio (leitura xlsx/csv + autodetecção encoding)
         'mi_perfis',        # módulo próprio (perfis de mapeamento por layout)
+        'mi_multiloja',     # módulo próprio (empresas/config + empresaFiltro)
         'customtkinter',
         'pyodbc',
         'pandas',

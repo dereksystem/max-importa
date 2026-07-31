@@ -12,6 +12,7 @@ from PIL import Image as PILImage
 
 import mi_arquivo   # leitura resiliente de arquivos (xlsx + autodetecção de encoding)
 import mi_perfis    # perfis de mapeamento de colunas por layout de arquivo
+import mi_multiloja # empresas (config) e visibilidade por loja (empresaFiltro)
 
 # ── Config, cores, cripto e credenciais (extraídos para mi_config.py) ──────────
 from mi_config import (
@@ -241,6 +242,129 @@ class CancelavelMixin:
             linha.configure(fg_color=fundo, border_color=borda, border_width=1)
         except Exception:
             pass
+
+    # ── Multi-loja ────────────────────────────────────────────────────────
+    def _selecionar_empresas(self, is_insert=True, conn=None):
+        """Pergunta em quais lojas a importação vale. Devolve:
+             lista de empId  → seguir com essa seleção
+             None            → banco de UMA loja (nada a perguntar, segue igual)
+             False           → o usuário cancelou
+
+        A marcação significa coisas DIFERENTES por operação, e o texto da janela diz
+        qual: no INSERT define onde o registro vai APARECER (grava o `empresaFiltro`);
+        no UPDATE define em quais lojas os DADOS mudam.
+
+        `conn` é obrigatório em quem não tem `self.conn` — a JanelaMigracao, por
+        exemplo, só abre a conexão do DESTINO dentro do `_migrar`."""
+        alvo = conn if conn is not None else getattr(self, "conn", None)
+        if alvo is None:
+            raise RuntimeError(
+                "_selecionar_empresas precisa de uma conexão: esta tela não tem "
+                "self.conn, então passe conn= explicitamente.")
+        try:
+            empresas = mi_multiloja.listar_empresas(alvo.cursor())
+        except Exception as e:
+            self._log(f"⚠️  Não foi possível ler a tabela config: {str(e)[:150]}")
+            return None
+        if len(empresas) <= 1:
+            return None
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Banco multi-loja")
+        dlg.resizable(False, False)
+        centralizar(dlg, 620, 190 + 34 * len(empresas))
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+
+        resultado = {"ok": False}
+        cab = ctk.CTkFrame(dlg, fg_color="transparent")
+        cab.pack(fill="x", padx=20, pady=(16, 6))
+        ctk.CTkLabel(cab, text="🏬  Este banco tem mais de uma empresa",
+                     font=ctk.CTkFont(size=15, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(
+            cab, justify="left", text_color=MD_GRAY, font=ctk.CTkFont(size=11),
+            text=("Marque as lojas em que os registros devem APARECER.\n"
+                  "Os dados são gravados em todas as empresas; a marcação define a "
+                  "visibilidade (empresaFiltro)."
+                  if is_insert else
+                  "Marque as lojas em que os DADOS devem ser alterados.\n"
+                  "A visibilidade já configurada (empresaFiltro) não é alterada."),
+        ).pack(anchor="w", pady=(4, 0))
+
+        corpo = ctk.CTkScrollableFrame(dlg, fg_color=("#FFFFFF", "#1B1E24"), height=34 * len(empresas))
+        corpo.pack(fill="both", expand=True, padx=20, pady=8)
+
+        hdr = ctk.CTkFrame(corpo, fg_color="transparent")
+        hdr.pack(fill="x")
+        for txt, w in (("SELECIONAR", 100), ("ID EMPRESA", 110), ("NOME DA EMPRESA", 300)):
+            ctk.CTkLabel(hdr, text=txt, width=w, anchor="w",
+                         font=ctk.CTkFont(size=10, weight="bold"),
+                         text_color="#A2A9B2").pack(side="left", padx=4)
+
+        vars_emp = {}
+
+        def _linha(var, id_txt, nome, cmd=None):
+            fr = ctk.CTkFrame(corpo, fg_color="transparent")
+            fr.pack(fill="x", pady=1)
+            ctk.CTkCheckBox(fr, text="", variable=var, width=100,
+                            command=cmd).pack(side="left", padx=4)
+            ctk.CTkLabel(fr, text=id_txt, width=110, anchor="w",
+                         font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
+            ctk.CTkLabel(fr, text=nome, width=300, anchor="w",
+                         font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
+
+        var_todas = ctk.BooleanVar(value=True)
+
+        def _alternar_todas():
+            for v in vars_emp.values():
+                v.set(var_todas.get())
+
+        def _revisar_todas(*_):
+            var_todas.set(all(v.get() for v in vars_emp.values()))
+
+        _linha(var_todas, "TODAS", "TODAS AS EMPRESAS", _alternar_todas)
+        for emp in empresas:
+            v = ctk.BooleanVar(value=True)
+            vars_emp[emp["cofId"]] = v
+            _linha(v, str(emp["cofId"]), emp["cofEmpFantasia"], _revisar_todas)
+
+        rod = ctk.CTkFrame(dlg, fg_color="transparent")
+        rod.pack(fill="x", padx=20, pady=(4, 16))
+
+        def _confirmar():
+            if not any(v.get() for v in vars_emp.values()):
+                messagebox.showwarning("Nenhuma empresa",
+                                       "Marque ao menos uma empresa.", parent=dlg)
+                return
+            resultado["ok"] = True
+            dlg.destroy()
+
+        ctk.CTkButton(rod, text="Continuar", width=130, height=34, fg_color=MD_RED,
+                      hover_color=MD_RED_HOV, corner_radius=9,
+                      command=_confirmar).pack(side="left")
+        ctk.CTkButton(rod, text="Cancelar", width=110, height=34, fg_color="transparent",
+                      border_width=1, text_color=TC_TEXT_MAIN, corner_radius=9,
+                      command=dlg.destroy).pack(side="left", padx=(8, 0))
+
+        dlg.wait_window()
+        if not resultado["ok"]:
+            return False
+        return [cof for cof, v in vars_emp.items() if v.get()]
+
+    def _aplicar_selecao_empresas(self, is_insert=True):
+        """Roda o diálogo multi-loja e guarda a escolha em `self.empresas_alvo`.
+
+        Devolve False quando o usuário cancelou (o chamador deve abortar). Em banco de
+        uma loja não pergunta nada, zera a seleção e segue — comportamento idêntico ao
+        de antes do multi-loja."""
+        escolha = self._selecionar_empresas(is_insert=is_insert)
+        if escolha is False:
+            self._log("Importação cancelada na seleção de empresas.")
+            return False
+        self.empresas_alvo = escolha        # None em banco de uma loja
+        if escolha:
+            self._log(f"🏬 Empresas selecionadas: {escolha}")
+        return True
 
     def _obrigatorios_efetivos(self):
         """Conjunto de campos realmente obrigatórios para a operação da tela.
@@ -1686,6 +1810,8 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
             # banco — o campo simplesmente fica de fora do SET daquela linha
             # (ver _montar_set_update em mi_db).
             self._log("Validacao UPDATE OK — apenas proId e obrigatorio.")
+            if not self._aplicar_selecao_empresas(is_insert=False):
+                return
             self.btn_import.configure(state="disabled")
             self.progress.set(0)
             self._dry_run = bool(self.simular_var.get())
@@ -1723,6 +1849,8 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
             return
 
         self._log("Validacao OK — todos os campos obrigatorios preenchidos.")
+        if not self._aplicar_selecao_empresas(is_insert=True):
+            return
         self.btn_import.configure(state="disabled")
         self.progress.set(0)
         self._dry_run = bool(self.simular_var.get())
@@ -2179,6 +2307,8 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
                 return
 
             self._log("Validacao UPDATE OK — apenas a chave e obrigatoria.")
+            if not self._aplicar_selecao_empresas(is_insert=False):
+                return
             self._despachar_update_clientes()
             return
 
@@ -2231,6 +2361,8 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
 
         self._log("Validacao OK — iniciando INSERT...")
 
+        if not self._aplicar_selecao_empresas(is_insert=True):
+            return
         self.btn_import.configure(state="disabled")
         self.progress.set(0)
         self._dry_run = bool(self.simular_var.get())
@@ -2380,6 +2512,9 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         ("pgtTipoConta", "vendaPgto", "Tipo Conta (varchar 1)",             True),
         ("pgtPago",      "vendaPgto", "Situação: S = Concluído / N = Aberto", True),
         # ── OPCIONAIS ─────────────────────────────────────────────────────
+        # Multi-loja: cada título é de UMA empresa, informada aqui. Sem o campo (ou com
+        # a célula vazia) o título vai para a empresa 1 — ver mi_multiloja.
+        ("empId",           "vendaPgto", "Empresa (loja) do título — padrão 1", False),
         ("pgtNumDoc",       "vendaPgto", "Número do documento",             False),
         ("pgtObs",          "vendaPgto", "Observação",                      False),
         ("pgtDataQuitou",   "vendaPgto", "Data de quitação",                False),
@@ -2649,6 +2784,9 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
                       + str(len(erros_vp)) + " linha(s).")
             return
 
+        if not self._avisar_multiloja_financeiro():
+            return
+
         self._dry_run = bool(self.simular_var.get())
         self._log("Modo SIMULAÇÃO (não grava) — iniciando..." if self._dry_run
                   else "Validacao OK — iniciando importacao...")
@@ -2657,6 +2795,38 @@ class JanelaFinanceiro(FinanceiroImportMixin, MapeamentoDBMixin, CancelavelMixin
         self.nao_encontrados = []
         self._op_iniciada()
         threading.Thread(target=self._inserir_financeiro, daemon=True).start()
+
+    def _avisar_multiloja_financeiro(self):
+        """No Financeiro não há seleção de lojas: cada título traz o seu `empId`.
+
+        O que existe é um aviso — banco multi-loja com o campo `empId` NÃO mapeado
+        significa que TODOS os títulos vão para a empresa 1. Devolve False se o usuário
+        preferir cancelar para corrigir o arquivo."""
+        try:
+            empresas = mi_multiloja.listar_empresas(self.conn.cursor())
+        except Exception as e:
+            self._log(f"⚠️  Não foi possível ler a tabela config: {str(e)[:150]}")
+            return True
+        if len(empresas) <= 1 or "empId" in self.mapping:
+            return True
+
+        padrao = mi_multiloja.EMP_ID_PADRAO_FINANCEIRO
+        lojas = "\n".join(f"    {e['cofId']} — {e['cofEmpFantasia']}" for e in empresas)
+        segue = messagebox.askyesno(
+            "Banco multi-loja",
+            f"Este banco tem {len(empresas)} empresas:\n\n{lojas}\n\n"
+            f"O campo 'empId' NAO foi mapeado, entao TODOS os {len(self.df)} titulos "
+            f"serao gravados na empresa {padrao}.\n\n"
+            "Se o arquivo tem a coluna da loja, cancele e mapeie o campo 'empId'.\n\n"
+            "Deseja continuar mesmo assim?",
+            parent=self)
+        if not segue:
+            self._log("Importação cancelada: mapear o campo 'empId' para distribuir "
+                      "os títulos entre as lojas.")
+            return False
+        self._log(f"⚠️  Multi-loja sem 'empId' mapeado — todos os títulos irão para a "
+                  f"empresa {padrao} (confirmado pelo usuário).")
+        return True
 
     # ── INSERT vendaPgto ──────────────────────────────────────────────────
     def _aviso_nao_encontrados(self):
@@ -3221,12 +3391,36 @@ class JanelaMigracao(MigracaoMixin, CancelavelMixin, TelaHospedada, ctk.CTkFrame
             return
         self._opcoes = opcoes
 
+        # Multi-loja: se o DESTINO tiver mais de uma empresa, a seleção entra aqui —
+        # ainda no wizard, para a migração seguir sem interação no meio. A conexão do
+        # destino só é aberta dentro do _migrar, então abrimos uma temporária aqui.
+        try:
+            _cfg = pyodbc.connect(self.base_conn_str + f"DATABASE={destino};", timeout=15)
+        except Exception as e:
+            messagebox.showerror("Destino inacessível",
+                                 f"Não foi possível conectar em {destino}:\n{str(e)[:300]}",
+                                 parent=self)
+            return
+        try:
+            empresas = self._selecionar_empresas(is_insert=True, conn=_cfg)
+        finally:
+            try:
+                _cfg.close()
+            except Exception:
+                pass
+        if empresas is False:
+            self._log("Migração cancelada na seleção de empresas.")
+            return
+        self._opcoes["empresas"] = empresas
+        if empresas:
+            self._log(f"🏬 Destino multi-loja — empresas selecionadas: {empresas}")
+
         # pré-cria as importadoras ocultas (thread principal) — só as que
         # reutilizam o importador (produtos e financeiro). Clientes e permissões
         # são migrados por rotina própria.
         for e in entidades:
             if e in ("produtos", "financeiro"):
-                self._get_importador(e)
+                self._get_importador(e).empresas_alvo = empresas
         self.btn_migrar.configure(state="disabled")
         self.progress.set(0)
         self._op_iniciada()

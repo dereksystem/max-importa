@@ -929,6 +929,62 @@ CRITICO - dedupe congelava o app em base grande (55 mil)
   desempenho com 105 mil registros).
 
 --------------------------------------------------------
+ [4.1.0] - 2026-07-31
+--------------------------------------------------------
+MIGRACAO MULTI-LOJA
+- Um banco MaxData e multi-loja quando a tabela config tem
+  mais de uma linha: cada cofId e uma empresa, e e ele que
+  aparece como empId em produto_empresa, cliente_empresa e
+  vendaPgto. O MaxImporta assumia UMA loja: todo empId saia
+  de "SELECT TOP 1 cofId FROM config", ou seja, uma empresa
+  ARBITRARIA - o produto nascia em uma loja so e o UPDATE
+  alterava uma loja so, sem erro e sem aviso.
+- TELA NOVA de selecao de empresas, exibida antes de iniciar
+  e SO quando o banco tem mais de uma. Colunas SELECIONAR /
+  ID (cofId) / NOME (cofEmpFantasia) + linha TODAS.
+- ATENCAO: a marcacao significa COISAS DIFERENTES por
+  operacao (o texto da janela diz qual): no INSERT define
+  onde o registro APARECE; no UPDATE, em quais lojas os
+  DADOS mudam.
+- INSERT (Produtos/Clientes): produto_empresa e
+  cliente_empresa recebem UMA LINHA POR EMPRESA (todas,
+  sempre); a visibilidade vai para o empresaFiltro, uma
+  linha por empresa marcada. Reimportar nao duplica
+  (IF NOT EXISTS).
+- UPDATE: os dados mudam so nas empresas marcadas
+  (WHERE ... AND empId IN (...), um comando, nao N) e o
+  empresaFiltro NAO e tocado - a loja pode ter ajustado a
+  visibilidade no Manager.
+- FINANCEIRO: vendaPgto nao e replicado (cada titulo e de
+  UMA loja). Campo novo empId, OPCIONAL; sem ele, o titulo
+  vai para a empresa 1. Multi-loja com o campo nao mapeado
+  gera AVISO com opcao de cancelar. empId que nao existe na
+  config NAO e gravado: linha pulada com o motivo no arquivo
+  de erros (titulo em empresa inexistente vira orfao).
+- MIGRACAO Max->Max: a selecao entra como passo do WIZARD,
+  que ja coleta tudo antes de comecar (nao assistida).
+- DESEMPENHO preservado: o INSERT combinado da 4.0.1 (~4,2x)
+  continua valendo - os N blocos vao DENTRO DO MESMO
+  comando, entao 3 lojas = 1 round-trip por registro, nao 3.
+  Com uma empresa o SQL gerado e IDENTICO ao de antes.
+- BANCO DE UMA LOJA NAO MUDA EM NADA (ha teste dedicado).
+- Da base real (MAX_GROW, 3 empresas, so leitura):
+  produto_empresa tem 2.488 x 3 exato; cliente_empresa tem
+  6.971/6.345/6.345 (NAO uniforme); vendaPgto nao repete
+  pgtId. Descobertas que viraram codigo: emfUsuId e int NOT
+  NULL SEM DEFAULT (gravamos admin=2, como o acerto de
+  estoque) e a base tem emfPkField com grafia inconsistente
+  ('cliId' e 'cliid') - o MaxImporta grava sempre a canonica.
+- EM ABERTO (registrado): no MAX_GROW so 35 dos 2.488
+  produtos tem linha no empresaFiltro e NAO ha view/proc/
+  trigger usando a tabela - a regra vive no MaxManager. A
+  leitura coerente e "lista de restricao" (sem linha =
+  aparece em todas). Gravar por empresa marcada funciona nas
+  DUAS leituras, entao a duvida nao muda o resultado.
+- 26 testes de unidade + 7 de integracao contra banco real.
+  Design em docs/superpowers/specs/2026-07-31-multiloja-design.md
+
+--------------------------------------------------------
  [4.0.2] - 2026-07-30
 --------------------------------------------------------
 NOVO CAMPO: proCodCst1 (origem da mercadoria) em Produtos

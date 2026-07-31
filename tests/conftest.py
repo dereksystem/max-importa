@@ -163,3 +163,43 @@ def orig_conn(bd_test):
         conn.close()
     except Exception:
         pass
+
+
+@pytest.fixture
+def db_multiloja(db_conn):
+    """Torna a cópia descartável MULTI-LOJA e devolve `(conn, [cofIds])`.
+
+    O BD_ZERO tem UMA empresa; o MAX_GROW (3 empresas) é base real e NÃO é
+    descartável — escrever nele para testar seria poluir produção. Então a cópia
+    ganha 2 empresas extras aqui, clonando a linha existente de `config` (assim
+    todas as colunas NOT NULL vêm preenchidas, sem precisar conhecer o schema
+    inteiro). O revert do snapshot, no teardown do `db_conn`, desfaz.
+    """
+    cur = db_conn.cursor()
+    antes = [r[0] for r in cur.execute("SELECT cofId FROM config ORDER BY cofId")]
+    assert len(antes) == 1, f"esperava BD_ZERO com 1 empresa, achei {antes}"
+
+    # ⚠️ As colunas de FK ficam de FORA do clone (entram NULL). O BD_ZERO tem centenas
+    # de FKs "não confiáveis" — a linha de config que existe lá aponta para registros
+    # que não existem, porque foi gravada com a FK desabilitada. Copiar esses valores
+    # estoura a FK na inserção. Todas as 51 colunas de FK da config aceitam NULL, então
+    # descartá-las é seguro; o que importa aqui é ter mais de um cofId.
+    cols = [r[0] for r in cur.execute(
+        "SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('config') "
+        "AND is_identity = 0 AND is_computed = 0 "
+        "AND name NOT IN (SELECT c2.name FROM sys.foreign_key_columns fkc "
+        "                 JOIN sys.columns c2 ON c2.object_id = fkc.parent_object_id "
+        "                                    AND c2.column_id = fkc.parent_column_id "
+        "                 WHERE fkc.parent_object_id = OBJECT_ID('config')) "
+        "ORDER BY column_id")]
+    lista = ", ".join(f"[{c}]" for c in cols)
+    for nome in ("FILIAL TESTE 2", "FILIAL TESTE 3"):
+        cur.execute(f"INSERT INTO config ({lista}) SELECT {lista} FROM config WHERE cofId = ?",
+                    antes[0])
+        novo = cur.execute("SELECT @@IDENTITY").fetchone()[0]
+        cur.execute("UPDATE config SET cofEmpFantasia = ? WHERE cofId = ?", nome, int(novo))
+    db_conn.commit()
+
+    emps = [r[0] for r in cur.execute("SELECT cofId FROM config ORDER BY cofId")]
+    assert len(emps) == 3, f"esperava 3 empresas, achei {emps}"
+    return db_conn, emps

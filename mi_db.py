@@ -484,6 +484,31 @@ class MapeamentoDBMixin:
         row = cursor.fetchone()
         return row[0] if row else 1
 
+    def _resolver_empresas(self, cursor):
+        """Devolve `(todas, marcadas)` para a gravação multi-loja.
+
+        - **todas** — um `empId` por `cofId` da `config`. É onde nascem as linhas de
+          `produto_empresa`/`cliente_empresa`: uma por empresa, sempre.
+        - **marcadas** — onde o registro deve APARECER (vai para o `empresaFiltro` no
+          INSERT, e delimita o `WHERE empId IN (…)` no UPDATE). Vem de
+          `self.empresas_alvo`, preenchido pela tela ou pelo wizard da migração.
+
+        Em banco de **uma loja** as duas listas têm o mesmo e único `empId`, então todo
+        o caminho a seguir se comporta exatamente como antes do multi-loja. Sem
+        `config` (banco atípico) cai no fallback histórico do `_get_emp_id`."""
+        import mi_multiloja
+
+        todas = getattr(self, "empresas_todas", None)
+        if not todas:
+            todas = [e["cofId"] for e in mi_multiloja.listar_empresas(cursor)]
+            if not todas:
+                todas = [self._get_emp_id(cursor)]
+            self.empresas_todas = todas
+
+        alvo = getattr(self, "empresas_alvo", None)
+        # Sem seleção (banco de uma loja, ou chamador que não passou nada): tudo.
+        return todas, list(alvo) if alvo else list(todas)
+
     def _lookup_unidade(self, cursor, pro_un):
         """Busca unidade na tabela produtoUn pelo campo unpUn (case-insensitive).
         Retorna dict {"unpId": int, "unpUn": str} ou None se não encontrada."""

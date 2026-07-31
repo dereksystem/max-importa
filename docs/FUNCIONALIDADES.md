@@ -14,6 +14,27 @@ migração banco→banco estão em [MIGRACAO.md](MIGRACAO.md).
 - Primeira linha = cabeçalho (nomes de coluna); demais = dados.
 - Valores tratados como NULL: vazio e os textos `NULL`, `NONE`, `NAN` (maiús/minús).
 
+### Multi-loja (`mi_multiloja`)
+Um banco é multi-loja quando a tabela `config` tem **mais de uma linha**: cada `cofId` é
+uma empresa e vira o `empId` de `produto_empresa`, `cliente_empresa` e `vendaPgto`.
+
+- Antes de iniciar, se houver mais de uma empresa, o sistema **pergunta em quais lojas**
+  a importação vale. Com uma só, nada é perguntado e o comportamento é o de sempre.
+- ⚠️ A marcação quer dizer **coisas diferentes** por operação:
+  - **INSERT** — onde o registro vai **aparecer**. Os dados são gravados em **todas** as
+    empresas (1 linha por `cofId`); a marcação vira linhas em **`empresaFiltro`**.
+  - **UPDATE** — em quais lojas os **dados** mudam (`WHERE … AND empId IN (…)`). O
+    `empresaFiltro` **não é alterado**: a visibilidade pode ter sido ajustada no Manager.
+- `empresaFiltro` é gravado com `IF NOT EXISTS` (reimportar não duplica), `emfUsuId = 2`
+  (admin — a coluna é `NOT NULL` sem default) e `emfPkField` na grafia canônica
+  (`proId` / `cliId`).
+- **Financeiro é diferente:** `vendaPgto` não é replicado, cada título é de UMA loja. O
+  campo **`empId`** é opcional no arquivo; vazio ou ausente → empresa **1**. `empId` fora
+  da `config` **não é gravado** — a linha é pulada e entra no arquivo de erros.
+- **Migração Max→Max:** a seleção é um passo do wizard, coletada antes de começar.
+- Desempenho: os N blocos por empresa vão **no mesmo comando**, então continua **1
+  round-trip por registro**.
+
 ### UPDATE: célula vazia **não apaga** (`_montar_set_update`, em `mi_db`)
 Regra única dos três caminhos de UPDATE (Produtos, Clientes por `cliId`, Clientes por
 CPF/CNPJ):

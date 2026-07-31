@@ -761,3 +761,203 @@ def test_update_produto_altera_cst1_e_invalido_preserva(db_conn):
     assert db_conn.cursor().execute(
         "SELECT proCodCst1 FROM produto_empresa WHERE proId = ?", pro_id).fetchone()[0] == 8
     assert o3._alertas_regras.get("proCodCst1 fora de 0-9") == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MULTI-LOJA — produto_empresa/cliente_empresa em TODAS as empresas,
+# visibilidade (empresaFiltro) só nas MARCADAS
+# ─────────────────────────────────────────────────────────────────────────────
+def _filtro(conn, tabela, pk_value):
+    """empIds em que o registro esta visivel, segundo o empresaFiltro."""
+    return [r[0] for r in conn.cursor().execute(
+        "SELECT empId FROM empresaFiltro WHERE emfTable = ? AND emfPkValue = ? "
+        "ORDER BY empId", tabela, pk_value)]
+
+
+def test_multiloja_insert_produto_cria_linha_em_todas_e_filtra_nas_marcadas(db_multiloja):
+    conn, emps = db_multiloja
+    assert emps == [1, 2, 3]
+    cur = conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+
+    campos = ["proId", "proDescricao", "proCodCst2", "proCodigo", "proUn", "ncmCodigoNCM"]
+    df = pd.DataFrame([{"proId": "", "proDescricao": f"PROD {tag} ML", "proCodCst2": "00",
+                        "proCodigo": f"{tag}M", "proUn": "UN", "ncmCodigoNCM": ncm}])
+    obj = _harness_produtos(conn, df, {c: c for c in campos})
+    obj.empresas_alvo = [1, 3]           # usuario marcou 1 e 3 na tela
+    obj._inserir_produtos()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+
+    pro_id = conn.cursor().execute(
+        "SELECT proId FROM produto_empresa WHERE proCodigo = ?", f"{tag}M").fetchone()[0]
+    # dados em TODAS as empresas
+    n = conn.cursor().execute(
+        "SELECT COUNT(*) FROM produto_empresa WHERE proId = ?", pro_id).fetchone()[0]
+    assert n == 3, "produto_empresa precisa de 1 linha por cofId"
+    # visibilidade so nas marcadas
+    assert _filtro(conn, "produto", pro_id) == [1, 3]
+
+
+def test_multiloja_insert_cliente_cria_linha_em_todas_e_filtra_nas_marcadas(db_multiloja):
+    conn, _ = db_multiloja
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["cliId", "cliCpfCgc", "cliNome", "cliFantasia", "cliRgInsc", "cliFatEnd",
+              "cliFatEndNumero", "cliFatBairro", "cliFatCidade", "cliFatUf", "cliFatCep",
+              "cliFatCidCodIBGE"]
+    obj = _harness_clientes(conn, pd.DataFrame([_linha_cliente(tag, "ML", "12345678000190")]),
+                            {c: c for c in campos})
+    obj.empresas_alvo = [2]
+    obj._inserir_clientes()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+
+    cli_id = conn.cursor().execute(
+        "SELECT cliId FROM cliente WHERE cliNome = ?", f"CLIENTE {tag} ML").fetchone()[0]
+    n = conn.cursor().execute(
+        "SELECT COUNT(*) FROM cliente_empresa WHERE cliId = ?", cli_id).fetchone()[0]
+    assert n == 3, "cliente_empresa precisa de 1 linha por cofId"
+    assert _filtro(conn, "cliente", cli_id) == [2]
+
+
+def test_multiloja_reimportar_nao_duplica_o_filtro(db_multiloja):
+    """Rodar o mesmo arquivo duas vezes nao pode dobrar as linhas de empresaFiltro."""
+    conn, _ = db_multiloja
+    cur = conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst2", "proCodigo", "proUn", "ncmCodigoNCM"]
+    linha = {"proId": "", "proDescricao": f"PROD {tag} DUP", "proCodCst2": "00",
+             "proCodigo": f"{tag}D", "proUn": "UN", "ncmCodigoNCM": ncm}
+
+    o1 = _harness_produtos(conn, pd.DataFrame([linha]), {c: c for c in campos})
+    o1.empresas_alvo = [1, 2]
+    o1._inserir_produtos()
+    pro_id = conn.cursor().execute(
+        "SELECT proId FROM produto_empresa WHERE proCodigo = ?", f"{tag}D").fetchone()[0]
+    assert _filtro(conn, "produto", pro_id) == [1, 2]
+
+    # segunda passada com o proId ja conhecido (modo cliId/proId do arquivo)
+    linha2 = dict(linha, proId=str(pro_id))
+    o2 = _harness_produtos(conn, pd.DataFrame([linha2]), {c: c for c in campos})
+    o2.empresas_alvo = [1, 2]
+    o2._inserir_produtos()
+
+    assert _filtro(conn, "produto", pro_id) == [1, 2], "empresaFiltro duplicou"
+    n = conn.cursor().execute(
+        "SELECT COUNT(*) FROM produto_empresa WHERE proId = ?", pro_id).fetchone()[0]
+    assert n == 3, "produto_empresa duplicou"
+
+
+def test_multiloja_update_altera_so_as_marcadas_e_nao_toca_no_filtro(db_multiloja):
+    conn, _ = db_multiloja
+    cur = conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst2", "proCodigo", "proUn",
+              "ncmCodigoNCM", "proVenda"]
+    df = pd.DataFrame([{"proId": "", "proDescricao": f"PROD {tag} UPD", "proCodCst2": "00",
+                        "proCodigo": f"{tag}U", "proUn": "UN", "ncmCodigoNCM": ncm,
+                        "proVenda": "10,00"}])
+    o1 = _harness_produtos(conn, df, {c: c for c in campos})
+    o1.empresas_alvo = [1, 2, 3]
+    o1._inserir_produtos()
+    pro_id = conn.cursor().execute(
+        "SELECT proId FROM produto_empresa WHERE proCodigo = ?", f"{tag}U").fetchone()[0]
+    filtro_antes = _filtro(conn, "produto", pro_id)
+    assert filtro_antes == [1, 2, 3]
+
+    # UPDATE de preco marcando SO a empresa 2
+    o2 = _harness_produtos(conn, pd.DataFrame([{"proId": str(pro_id), "proVenda": "99,90"}]),
+                           {"proId": "proId", "proVenda": "proVenda"})
+    o2.empresas_alvo = [2]
+    o2._atualizar_produtos()
+
+    precos = {r[0]: float(r[1]) for r in conn.cursor().execute(
+        "SELECT empId, proVenda FROM produto_empresa WHERE proId = ? ORDER BY empId", pro_id)}
+    assert precos[2] == pytest.approx(99.90), "a empresa marcada tinha de mudar"
+    assert precos[1] == pytest.approx(10.00), "empresa nao marcada nao pode mudar"
+    assert precos[3] == pytest.approx(10.00)
+    assert _filtro(conn, "produto", pro_id) == filtro_antes, "UPDATE nao pode mexer no filtro"
+
+
+def test_banco_de_uma_loja_continua_igual(db_conn):
+    """Regressao: sem multi-loja nada muda — 1 linha e NENHUM empresaFiltro."""
+    cur = db_conn.cursor()
+    assert cur.execute("SELECT COUNT(*) FROM config").fetchone()[0] == 1
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst2", "proCodigo", "proUn", "ncmCodigoNCM"]
+    df = pd.DataFrame([{"proId": "", "proDescricao": f"PROD {tag} UNI", "proCodCst2": "00",
+                        "proCodigo": f"{tag}1", "proUn": "UN", "ncmCodigoNCM": ncm}])
+    obj = _harness_produtos(db_conn, df, {c: c for c in campos})
+    obj._inserir_produtos()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+
+    pro_id = db_conn.cursor().execute(
+        "SELECT proId FROM produto_empresa WHERE proCodigo = ?", f"{tag}1").fetchone()[0]
+    assert db_conn.cursor().execute(
+        "SELECT COUNT(*) FROM produto_empresa WHERE proId = ?", pro_id).fetchone()[0] == 1
+    assert _filtro(db_conn, "produto", pro_id) == [], \
+        "banco de uma loja nao deve gerar empresaFiltro"
+
+
+def test_multiloja_financeiro_usa_o_empid_do_arquivo(db_multiloja):
+    """Cada titulo vai para a empresa informada na propria linha; sem valor, para a 1."""
+    conn, emps = db_multiloja
+    tag = uuid.uuid4().hex[:8].upper()
+    cpf = "11222333000181"
+
+    obj_cli = _harness_clientes(conn, pd.DataFrame([_linha_cliente(tag, "FML", cpf)]),
+                                {c: c for c in _linha_cliente(tag, "FML", cpf)})
+    obj_cli._inserir_clientes()
+    cli_id = conn.cursor().execute(
+        "SELECT cliId FROM cliente WHERE cliCpfCgc = ?", cpf).fetchone()[0]
+
+    campos = ["cliCpfCgc", "pgtCliNome", "pgtValor", "pgtData", "pgtVecmto",
+              "pgtTipoConta", "pgtPago", "pgtTipoVista", "empId"]
+    base = {"cliCpfCgc": cpf, "pgtCliNome": f"CLIENTE {tag} FML",
+            "pgtData": "2026-07-04", "pgtVecmto": "2026-08-04",
+            "pgtTipoConta": "R", "pgtPago": "N", "pgtTipoVista": "1"}
+    df = pd.DataFrame([
+        dict(base, pgtValor="10",  empId="3"),   # empresa informada
+        dict(base, pgtValor="20",  empId=""),    # vazio -> padrao 1
+        dict(base, pgtValor="30",  empId="99"),  # inexistente -> pulada
+    ])
+    obj = _harness_financeiro(conn, df, {c: c for c in campos})
+    obj._inserir_financeiro()
+
+    assert obj._ultimo_resultado["inseridos"] == 2, obj._logs[-8:]
+    por_valor = {float(r[0]): r[1] for r in conn.cursor().execute(
+        "SELECT pgtValor, empId FROM vendaPgto WHERE pgtClienteId = ?", cli_id)}
+    assert por_valor[10.0] == 3, "empId do arquivo deve ser respeitado"
+    assert por_valor[20.0] == 1, "empId vazio deve cair no padrao 1"
+    assert 30.0 not in por_valor, "empId inexistente na config nao pode ser gravado"
+    assert any("99" in l and "config" in l for l in obj._logs), \
+        "a linha pulada precisa aparecer no log"
+    assert any(d.get("_motivo", "").startswith("empId 99") for d in obj.nao_encontrados)
+
+
+def test_multiloja_financeiro_sem_campo_empid_usa_o_padrao(db_multiloja):
+    """Campo nao mapeado: comportamento historico, tudo na empresa 1 (o aviso e na GUI)."""
+    conn, _ = db_multiloja
+    tag = uuid.uuid4().hex[:8].upper()
+    cpf = "11222333000181"
+    obj_cli = _harness_clientes(conn, pd.DataFrame([_linha_cliente(tag, "FP", cpf)]),
+                                {c: c for c in _linha_cliente(tag, "FP", cpf)})
+    obj_cli._inserir_clientes()
+    cli_id = conn.cursor().execute(
+        "SELECT cliId FROM cliente WHERE cliCpfCgc = ?", cpf).fetchone()[0]
+
+    campos = ["cliCpfCgc", "pgtCliNome", "pgtValor", "pgtData", "pgtVecmto",
+              "pgtTipoConta", "pgtPago", "pgtTipoVista"]
+    df = pd.DataFrame([{"cliCpfCgc": cpf, "pgtCliNome": f"CLIENTE {tag} FP",
+                        "pgtValor": "55", "pgtData": "2026-07-04",
+                        "pgtVecmto": "2026-08-04", "pgtTipoConta": "R",
+                        "pgtPago": "N", "pgtTipoVista": "1"}])
+    obj = _harness_financeiro(conn, df, {c: c for c in campos})
+    obj._inserir_financeiro()
+
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+    emp = conn.cursor().execute(
+        "SELECT empId FROM vendaPgto WHERE pgtClienteId = ?", cli_id).fetchone()[0]
+    assert emp == 1

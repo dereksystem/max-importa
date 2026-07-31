@@ -15,6 +15,7 @@ Mapa da aplicação (v3.6.2). Desde a refatoração, o monólito foi dividido em
 | `mi_db.py` | **`MapeamentoDBMixin`** — leitura de células (`_get_str/_get_str_max/_get_int/_get_float/_get_decimal/_get_datetime/_to_decimal`) e utilidades de banco (`_lookup`, `_get_or_create`, `_get_emp_id`, `_lookup_unidade`, `_get_or_create_unidade`, `_lookup_cli_id`) + o **SET do UPDATE** (`_celula_preenchida`/`_montar_set_update`: célula vazia fica fora do SET e não apaga o banco) | não |
 | `mi_migracao.py` | **`MigracaoMixin`** — lógica da migração banco→banco (`_migrar`, `_migrar_entidade`, `_migrar_clientes/permissoes/codbarras`, `_sql_*`, `_reconciliar`, `_salvar_relatorio_migracao`, `_registrar_auditoria`, `_backup_destino`, …) | não |
 | `mi_importadores.py` | **`ProdutosImportMixin`/`ClientesImportMixin`/`FinanceiroImportMixin`** (lógica de `_inserir_*`/`_atualizar_*`, `_calc_cli_tipo`, `_get_cst1`) + **importadores HEADLESS** usados pela migração (`ProdutosImportadorHeadless`, …) | não |
+| `mi_multiloja.py` | empresas do banco (`listar_empresas`, `e_multiloja`) e visibilidade por loja (`registrar_filtro` → `empresaFiltro`); constantes `USU_ID_PADRAO` e `EMP_ID_PADRAO_FINANCEIRO` | não |
 | `mi_validacao.py` | regras de validação **puras** dos `_iniciar`: `campos_nao_mapeados`, `validar_obrigatorios`, `linhas_ao_menos_um`, `ids_reservados` | não |
 
 As janelas importadoras herdam os mixins:

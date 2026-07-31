@@ -8,6 +8,67 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [4.1.0] — 2026-07-31
+
+### ✨ Migração multi-loja — o banco com mais de uma empresa passa a ser respeitado
+Um banco MaxData é multi-loja quando a tabela `config` tem mais de uma linha: cada
+`cofId` é uma empresa, e é ele que aparece como `empId` em `produto_empresa`,
+`cliente_empresa` e `vendaPgto`. O MaxImporta assumia **uma** loja: todo `empId` saía de
+um `SELECT TOP 1 cofId FROM config`, ou seja, **uma empresa arbitrária**. O produto
+nascia em uma loja só e o UPDATE alterava uma loja só — sem erro e sem aviso.
+
+- **Nova tela de seleção de empresas**, exibida antes de iniciar, **só** quando o banco
+  tem mais de uma. Traz `SELECIONAR / ID (cofId) / NOME (cofEmpFantasia)` e a linha
+  **TODAS** como marcar-tudo.
+- ⚠️ A marcação significa **coisas diferentes** por operação, e o texto da janela diz
+  qual: no **INSERT** define onde o registro vai **aparecer**; no **UPDATE** define em
+  quais lojas os **dados** mudam.
+- **INSERT** de Produtos e Clientes: `produto_empresa` / `cliente_empresa` recebem
+  **uma linha por empresa** (todas, sempre), e a visibilidade vai para o
+  **`empresaFiltro`**, uma linha por empresa marcada. Reimportar o mesmo arquivo não
+  duplica (`IF NOT EXISTS`).
+- **UPDATE**: os dados mudam só nas empresas marcadas (`WHERE … AND empId IN (…)`, um
+  comando, não N) e o **`empresaFiltro` não é tocado** — a loja pode ter ajustado a
+  visibilidade no Manager, e reimportar um arquivo não deve desfazer isso.
+- **Financeiro**: `vendaPgto` não é replicado — cada título é de UMA loja. Campo novo
+  **`empId`**, opcional; sem ele (ou com a célula vazia) o título vai para a empresa 1.
+  Se o banco for multi-loja e o campo não estiver mapeado, a tela **avisa** que tudo irá
+  para a empresa 1 e deixa cancelar. `empId` que não existe na `config` **não é
+  gravado**: a linha é pulada com o motivo no arquivo de erros — título em empresa
+  inexistente vira órfão difícil de achar depois.
+- **Migração Max→Max**: a seleção entra como passo do **wizard**, que já coleta todas as
+  decisões antes de começar — a execução segue não assistida.
+
+**Desempenho preservado.** O INSERT combinado da v4.0.1 (~4,2×) continua valendo: os N
+blocos de `produto_empresa`/`cliente_empresa` são repetidos **dentro do mesmo comando**,
+então 3 lojas continuam **1 round-trip por registro**, não 3. Com uma empresa, o SQL
+gerado é idêntico ao de antes.
+
+**Banco de uma loja não muda em nada** — a tela não aparece e o caminho de gravação é o
+mesmo de sempre. Há teste dedicado a isso.
+
+**O que a base real mostrou** (MAX_GROW, 3 empresas, consultada só em leitura):
+`produto_empresa` tem exatamente 2.488 × 3 linhas, confirmando a regra de uma por
+`cofId`; `cliente_empresa` tem 6.971 / 6.345 / 6.345 — **não** é uniforme; e `vendaPgto`
+não repete `pgtId` entre empresas. Duas descobertas viraram código: `emfUsuId` é
+`int NOT NULL` **sem default** (gravamos o admin `2`, mesma convenção do acerto de
+estoque) e a base tem `emfPkField` com grafia inconsistente (`cliId` e `cliid`) — o
+MaxImporta grava sempre a forma canônica.
+
+⚠️ **Ponto em aberto, registrado de propósito:** no MAX_GROW só **35 dos 2.488** produtos
+têm linha no `empresaFiltro`, e não existe view, procedure ou trigger citando a tabela —
+a regra de visibilidade vive dentro do MaxManager. A leitura mais coerente é *lista de
+restrição* (sem linha = aparece em todas). Gravar uma linha por empresa marcada funciona
+**nas duas leituras**, então a dúvida não muda o resultado.
+
+- 26 testes de unidade + 7 de integração contra banco real, incluindo: 3 linhas criadas
+  com filtro só nas marcadas, reimportação sem duplicar, UPDATE que altera só as
+  marcadas e preserva o filtro, `empId` do arquivo no Financeiro (com inexistente
+  pulado) e a regressão de banco de uma loja. Design em
+  `docs/superpowers/specs/2026-07-31-multiloja-design.md`.
+
+---
+
 ## [4.0.2] — 2026-07-30
 
 ### ✨ Novo campo: `proCodCst1` (origem da mercadoria) em Produtos
