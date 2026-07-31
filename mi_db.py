@@ -232,6 +232,40 @@ class MapeamentoDBMixin:
             s = s[:max_len]
         return s
 
+    # ── UPDATE: célula vazia = "não mexer" ────────────────────────────────
+    def _celula_preenchida(self, row, campo) -> bool:
+        """True se a célula do arquivo tem conteúdo de verdade.
+
+        Serve ao UPDATE, onde célula VAZIA significa "não mexer neste campo" —
+        nunca "grave NULL por cima". Olha o valor CRU, e não o que os _get_*
+        devolvem, porque eles convertem vazio para algo gravável: _get_float
+        devolve 0.0 para os campos de FLOAT_NOT_NULL (correto no INSERT, onde a
+        coluna não aceita NULL; destrutivo no UPDATE, onde zeraria preço/custo)."""
+        col = self.mapping.get(campo)
+        if not col:
+            return False
+        val = row.get(col)
+        if val is None:
+            return False
+        # NaN do pandas vira a string 'nan' — capturado junto com os demais vazios
+        return str(val).strip().upper() not in ('', 'NULL', 'NONE', 'NAN')
+
+    def _montar_set_update(self, row, mapa):
+        """Monta (lista de "col = ?", lista de valores) para um UPDATE, incluindo
+        SOMENTE os campos mapeados E preenchidos nesta linha.
+
+        `mapa` é {coluna_db: (funcao_de_leitura, campo_do_mapeamento)}.
+
+        Este é o padrão que cliTipo e cliDatCad já seguiam individualmente ("só
+        entra no SET quando há valor"); aqui ele vale para todos os campos."""
+        sets, vals = [], []
+        for col_db, (fn, campo) in mapa.items():
+            if not self._celula_preenchida(row, campo):
+                continue
+            sets.append(f"{col_db} = ?")
+            vals.append(fn(row, campo))
+        return sets, vals
+
     def _get_decimal(self, row, campo):
         col = self.mapping.get(campo)
         raw = row.get(col) if col else None

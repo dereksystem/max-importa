@@ -929,6 +929,101 @@ CRITICO - dedupe congelava o app em base grande (55 mil)
   desempenho com 105 mil registros).
 
 --------------------------------------------------------
+ [4.0.2] - 2026-07-30
+--------------------------------------------------------
+NOVO CAMPO: proCodCst1 (origem da mercadoria) em Produtos
+- O CST do produto tem DUAS partes em produto_empresa e so
+  uma era importada (proCodCst2 = tributacao). Agora o
+  proCodCst1 (ORIGEM, 0 = Nacional) entra no INSERT e no
+  UPDATE de Produtos, e tambem na migracao Max->Max (migrar
+  o CST2 sem o CST1 deixaria a origem no padrao no destino).
+- ATENCAO: proCodCst1 e INT no banco (o proCodCst2 e
+  varchar(2)) e aceita UM UNICO DIGITO de 0 a 9.
+- OPCIONAL: nao mapeado grava 0 no INSERT, acompanhando o que
+  a base ja usa (CST1_DEFAULT em ProdutosImportMixin).
+- Valor fora de 0-9 (55, "A", "1,5") NAO e gravado num campo
+  fiscal: vira alerta no log/relatorio e o campo e ignorado -
+  no INSERT cai no padrao, no UPDATE mantem o banco. A linha
+  NAO falha por isso (padrao das outras regras de negocio).
+- Celula vazia continua sendo ausencia, nao erro.
+- Modelos atualizados: "modele de importacao_produto_v2.txt"
+  e a aba Produtos do MaxImporta_Modelos_Importacao.xlsx.
+- 15 testes novos: 11 de unidade (limites 0 e 9, numerico,
+  "3.0" do Excel, espacos, fora do intervalo, vazio, nao
+  mapeado) e 4 contra o banco (grava como INT, padrao 0,
+  invalido nao derruba a linha, UPDATE invalido PRESERVA).
+
+O mapeamento aparecia espremido - barrinha decorativa
+- Sobravam ~4 linhas de mapeamento mesmo com a janela inteira,
+  e o rodape ocupava metade da altura. Culpado: a barrinha
+  vermelha ao lado do log, um CTkFrame(width=4) SEM height -
+  no CustomTkinter isso nasce com o default de 200px. Como
+  fill="y" estica mas NAO encolhe abaixo do tamanho pedido,
+  ela definia a altura do bloco do log (250px para um textbox
+  que pede 105) e roubava ~145px do mapeamento.
+- Medido em 1366x768: mapeamento de 213px (4 linhas) para
+  402px (8 linhas); rodape de 516px para 327px. Vale para as
+  3 telas de importacao. Correcao: height=1 na barrinha, que
+  passa a so ACOMPANHAR o textbox.
+
+Rodape reorganizado (menos linhas repetindo o mesmo)
+- "Obrigatorios: X de Y" + barra + o resumo "X/28 campos
+  mapeados - faltam obrigatorios: ..." eram DUAS linhas
+  dizendo a mesma coisa; viraram UMA.
+- O rotulo "X de Y (NN%)" saiu da linha propria (ocupava ~35px
+  mesmo vazio) e foi para o lado da barra de progresso.
+- 25 testes novos (tests/test_layout.py) MEDEM a geometria de
+  uma janela Tk real (3 telas x 3 resolucoes): botao de acao
+  nunca sai da janela, mapeamento fica com a maior parte da
+  altura quando ha espaco, e mostra linhas na janela minima.
+  Sem o height=1, 9 deles falham. SKIP sozinho sem display.
+
+CRITICO - o UPDATE estava APAGANDO dados do banco
+- O SET do UPDATE era montado pelos campos MAPEADOS, e nao
+  pelos campos PREENCHIDOS. Mapear uma coluna e deixar a
+  celula em branco gerava "SET cliEmail = NULL": o cadastro
+  que estava no banco era sobrescrito por vazio.
+- Pior nos numeros: proVenda, proCusto, proAtacado,
+  proEstoqueMin e cia. estao em FLOAT_NOT_NULL, entao celula
+  vazia nao virava NULL - virava 0,0. Um UPDATE de descricao
+  levava PRECO e CUSTO a ZERO, sem erro nem aviso.
+- Regra agora: no UPDATE, celula vazia significa "nao mexer
+  neste campo". O campo fica fora do SET daquela linha e o
+  valor do banco e preservado. Nao ha como apagar um campo
+  pelo arquivo - para limpar, use o Manager.
+- Helper unico (_montar_set_update / _celula_preenchida, em
+  mi_db) usado nos TRES caminhos afetados: Produtos, Clientes
+  por cliId e Clientes por CPF/CNPJ. Ele olha o valor CRU da
+  celula - e a conversao dos _get_* (vazio -> 0.0) que tornava
+  o caso dos precos invisivel.
+- 7 testes novos: 5 de unidade (vazio fora do SET; 0 continua
+  sendo gravado, pois cliDesativa=0 e ATIVO; linha sem dado
+  nao gera UPDATE) e 2 contra o banco real, que inserem um
+  cadastro completo, atualizam so a descricao e conferem que
+  preco, custo, aplicacao, fantasia e endereco continuam la.
+
+UPDATE: so a CHAVE e obrigatoria
+- Antes o UPDATE cobrava os mesmos obrigatorios do INSERT:
+  para trocar o preco de um produto era preciso mapear e
+  preencher descricao, CST, codigo, unidade e NCM. O registro
+  JA EXISTE no banco - nao fazia sentido.
+- Produtos: obrigatorio e so o proId. Clientes: so o cliId
+  (ou cliCpfCgc como chave alternativa). O resto e opcional.
+- Continua sendo preciso mapear ao menos UM campo alem da
+  chave - sem isso nao ha o que atualizar.
+- Saiu a validacao que bloqueava o UPDATE quando um campo
+  obrigatorio mapeado vinha vazio: ela existia para evitar a
+  gravacao de NULL, que agora e ignorada por construcao.
+- A tela acompanha: em UPDATE nao ha mais selo FALTA, o
+  contador conta so a chave e o cabecalho da secao vira
+  "CAMPOS PRINCIPAIS (opcionais no UPDATE - vazio mantem o
+  banco)".
+- Em Clientes, o preenchimento assistido (Fantasia, RG/Insc,
+  Numero -> "S/N") deixou de rodar no UPDATE: ele preenche
+  celulas vazias, que e justamente o que nao deve ser gravado
+  por cima do cadastro.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

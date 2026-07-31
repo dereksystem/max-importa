@@ -8,6 +8,100 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [4.0.2] — 2026-07-30
+
+### ✨ Novo campo: `proCodCst1` (origem da mercadoria) em Produtos
+O CST do produto tem **duas partes** em `produto_empresa`, e só uma era importada:
+`proCodCst2` (tributação). Agora o **`proCodCst1`** — a **origem**, `0` = Nacional —
+entra no **INSERT e no UPDATE** de Produtos, e também na migração Max→Max (migrar o
+CST2 sem o CST1 deixaria a origem cair no padrão no destino).
+- ⚠️ Diferente do par: `proCodCst1` é **INT** no banco (o `proCodCst2` é `varchar(2)`),
+  e aceita **um único dígito de 0 a 9**.
+- **Opcional.** Não mapeado → grava **`0`** no INSERT, acompanhando o que a base já usa.
+- **Valor fora de 0–9** (`55`, `A`, `1,5`) **não é gravado** num campo fiscal: vira
+  alerta no log e no relatório, e o campo é ignorado — no INSERT cai no padrão, no
+  UPDATE mantém o que está no banco. A linha **não** falha por isso, seguindo o padrão
+  das outras regras de negócio (CPF/CNPJ, e-mail, datas).
+- Célula vazia continua sendo ausência, não erro.
+- Os **modelos de importação** ganharam a coluna: `modele de importação_produto_v2.txt`
+  e a aba Produtos do `MaxImporta_Modelos_Importacao.xlsx`.
+- 15 testes novos: 11 de unidade (limites 0 e 9, número já numérico, `3.0` do Excel,
+  espaços, fora do intervalo, vazio, não mapeado) e **4 contra o banco**, que conferem
+  que o valor grava como INT, que o padrão `0` entra quando não mapeado, que um valor
+  inválido não derruba a linha e que o UPDATE inválido **preserva** o valor anterior.
+
+### 🐛 O mapeamento aparecia espremido — uma barrinha decorativa comia a tela
+Na tela de importação sobravam ~4 linhas de mapeamento mesmo com a janela inteira
+disponível, enquanto o rodapé ocupava metade da altura. O culpado era a **barrinha
+vermelha decorativa ao lado do log**: um `CTkFrame(width=4)` **sem `height`**, que no
+CustomTkinter nasce com o default de **200 px**. Como `fill="y"` estica mas **não
+encolhe** abaixo do tamanho requisitado, ela definia a altura do bloco do log — 250 px
+para um textbox que pede 105 — e roubava ~145 px do mapeamento.
+- Medido em 1366×768: o mapeamento foi de **213 px (4 linhas) para 402 px (8 linhas)**;
+  o rodapé caiu de 516 px para 327 px. Vale para as três telas de importação.
+- `height=1` na barrinha: agora ela só **acompanha** o textbox, nunca o dimensiona.
+
+### ✏️ Rodapé reorganizado — menos linhas dizendo a mesma coisa
+Aproveitando a correção acima, o rodapé (compartilhado pelas três telas) ficou mais
+compacto, sempre a favor da área de mapeamento:
+- O contador **"Obrigatórios: X de Y"**, a barra de progresso dele e o resumo
+  *"X/28 campos mapeados — faltam obrigatórios: …"* eram **duas linhas** dizendo a mesma
+  coisa; agora são **uma só**.
+- O rótulo de progresso *"X de Y (NN%)"* saiu da linha própria (que ocupava ~35 px mesmo
+  vazia, fora de qualquer importação) e foi para **o lado da barra de progresso**.
+- 25 testes novos de layout (`tests/test_layout.py`) que **medem a geometria** de uma
+  janela Tk real nas 3 telas × 3 resoluções: garantem que o botão de ação nunca sai da
+  janela (a regressão de 1366×768 da v4.0.1), que o mapeamento fica com a maior parte da
+  altura quando há espaço e que ele mostra linhas mesmo na janela mínima. Confirmado que
+  pegam o bug: sem o `height=1`, 9 deles falham. Fazem SKIP sozinhos onde não há display.
+
+### 🐛 CRÍTICO — o UPDATE estava APAGANDO dados que já existiam no banco
+O SET do UPDATE era montado a partir dos campos **MAPEADOS**, e não dos campos
+**PREENCHIDOS**. Mapear uma coluna e deixar a célula em branco em algumas linhas
+gerava `SET cliEmail = NULL` — o cadastro que estava no banco era sobrescrito por
+vazio. Como quase ninguém preenche a planilha inteira, bastava um arquivo com
+"buracos" para zerar cadastro por atacado.
+- Pior no caso dos números: `proVenda`, `proCusto`, `proAtacado`, `proEstoqueMin`
+  e companhia estão em `FLOAT_NOT_NULL`, então célula vazia não virava NULL — virava
+  **0,0**. Um UPDATE de descrição levava junto o **preço e o custo a zero**, sem erro
+  nem aviso.
+- Regra agora: no UPDATE, **célula vazia significa "não mexer neste campo"**. O campo
+  simplesmente fica de fora do SET daquela linha e o valor do banco é preservado.
+  Não há como apagar um campo pelo arquivo — para limpar um campo, use o Manager.
+- A correção é um helper único (`_montar_set_update` + `_celula_preenchida`, em
+  `mi_db`) usado pelos **três** caminhos de UPDATE que tinham o problema: Produtos,
+  Clientes por `cliId` e Clientes por CPF/CNPJ. O helper olha o valor **cru** da
+  célula, e não o que os `_get_*` devolvem — é justamente a conversão deles
+  (vazio → `0.0`) que tornava o caso dos preços invisível.
+- Este era o padrão que `cliTipo` e `cliDatCad` já seguiam sozinhos ("só entra no SET
+  quando há valor"); agora vale para todos os campos.
+- 7 testes novos: 5 de unidade (vazio fora do SET, `0` continua sendo gravado —
+  `cliDesativa=0` é *ativo*, não vazio — e linha sem dado nenhum não gera UPDATE) e
+  **2 contra o banco de verdade**, que inserem um cadastro completo, rodam um UPDATE
+  só com a descrição e conferem que preço, custo, aplicação, fantasia e endereço
+  continuam lá.
+
+### ✏️ UPDATE: só a CHAVE é obrigatória
+Antes, o UPDATE cobrava os mesmos campos obrigatórios do INSERT: para trocar o preço
+de um produto era preciso mapear (e preencher) descrição, CST, código, unidade e NCM.
+Não fazia sentido — o registro **já existe** no banco.
+- **Produtos:** obrigatório é só o `proId`. **Clientes:** só o `cliId` (ou o
+  `cliCpfCgc`, quando serve de chave alternativa). Todo o resto é opcional.
+- Continua valendo a exigência de mapear **ao menos um** campo além da chave — sem
+  isso não há o que atualizar.
+- Saiu a validação que bloqueava o UPDATE quando um campo obrigatório mapeado vinha
+  vazio. Ela existia para evitar exatamente a gravação de NULL; agora que o vazio é
+  ignorado por construção, ela só atrapalhava.
+- A tela acompanha: em modo UPDATE os campos não recebem mais o selo vermelho
+  `FALTA`, o contador de obrigatórios passa a contar só a chave, e o cabeçalho da
+  seção vira **"CAMPOS PRINCIPAIS (opcionais no UPDATE — vazio mantém o banco)"**.
+  O agrupamento continua, porque ajuda a achar os campos.
+- Em Clientes, o preenchimento assistido (Fantasia, RG/Insc, Número → "S/N") deixou
+  de rodar no UPDATE: ele preenche células vazias, que é justamente o que não deve
+  ser gravado por cima do cadastro.
+
+---
+
 ## [4.0.1] — 2026-07-27
 
 ### ⚡ INSERT de Clientes e Produtos muito mais rápido (lote único)

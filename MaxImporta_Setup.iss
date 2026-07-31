@@ -23,7 +23,7 @@
 ; ============================================================================
 
 #define MyAppName "Max Importa"
-#define MyAppVersion "4.0.1"
+#define MyAppVersion "4.0.2"
 #define MyAppPublisher "MaxData"
 #define MyAppExeName "Max_Importa.exe"
 

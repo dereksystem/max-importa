@@ -7,6 +7,8 @@ Cobre parsing e regras que não dependem de tela nem de SQL Server:
 
 | Arquivo | O que cobre |
 |---|---|
+| `test_update_preserva.py` | **UPDATE não apaga**: célula vazia fica fora do SET (Produtos e Clientes), `0` continua sendo gravado (`cliDesativa=0` é *ativo*), linha sem dado nenhum não gera UPDATE, e a obrigatoriedade por operação (`_obrigatorios_efetivos`: INSERT = tudo / UPDATE = só a chave) |
+| `test_layout.py` | **geometria de janela Tk real** (3 telas × 2 resoluções): o botão de ação nunca sai da janela, o mapeamento fica com a maior parte da altura, o bloco do log não estoura o textbox, e as listas de campos ficam ordenadas por seção (obrigatórios antes dos opcionais). Faz **SKIP** sozinho sem display |
 | `test_helpers.py` | `_to_decimal` (número BR/US), `_get_int`/`_get_str`, `_get_str_max` (corte de coluna), `_calc_cli_tipo` (CPF→PF / CNPJ→PJ), **DPAPI** (cifra/decifra da senha), **`[Conexao]`** no `.ini` (sem plaintext, Windows sem senha, limpeza), `_montar_msg_obrigatorios` (contagem) |
 
 Os métodos de parsing são das janelas, mas só usam `self.mapping`; os testes criam
@@ -17,7 +19,7 @@ janela é aberta.
 
 | Arquivo | O que cobre |
 |---|---|
-| `test_integration_db.py` | smoke (a cópia subiu); **importação de produtos** (proId AUTO via SCOPE_IDENTITY, unidade auto-criada, vínculo `produto_empresa`, preço, corte em 100); **importação de clientes** (cliId AUTO, `cliente_empresa`, `cliTipo` derivado de CPF/CNPJ); **importação de financeiro** (lookup CPF→cliId, não-encontrado pulado); **migração** de permissões (cross-database `INSERT...SELECT`) e de **clientes "banco zero"** (desabilita/reabilita as ~FKs, limpa e recopia); prova de **isolamento** por revert |
+| `test_integration_db.py` | smoke (a cópia subiu); **importação de produtos** (proId AUTO via SCOPE_IDENTITY, unidade auto-criada, vínculo `produto_empresa`, preço, corte em 100); **importação de clientes** (cliId AUTO, `cliente_empresa`, `cliTipo` derivado de CPF/CNPJ); **importação de financeiro** (lookup CPF→cliId, não-encontrado pulado); **migração** de permissões (cross-database `INSERT...SELECT`) e de **clientes "banco zero"** (desabilita/reabilita as ~FKs, limpa e recopia); prova de **isolamento** por revert; **UPDATE preserva o banco** (insere cadastro completo, atualiza só a descrição e confere preço/custo/aplicação/fantasia/endereço); **`proCodCst1`** (grava como INT, padrão `0` quando não mapeado, valor fora de 0–9 não derruba a linha e no UPDATE preserva o valor anterior) |
 
 **Isolamento (banco descartável, o `BD_ZERO` NUNCA é tocado):** o `conftest.py` cria
 uma vez por sessão o `BD_ZERO_TEST` por **cópia** do `BD_ZERO` (backup `COPY_ONLY` +

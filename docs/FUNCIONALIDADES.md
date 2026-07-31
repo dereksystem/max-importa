@@ -14,6 +14,23 @@ migração banco→banco estão em [MIGRACAO.md](MIGRACAO.md).
 - Primeira linha = cabeçalho (nomes de coluna); demais = dados.
 - Valores tratados como NULL: vazio e os textos `NULL`, `NONE`, `NAN` (maiús/minús).
 
+### UPDATE: célula vazia **não apaga** (`_montar_set_update`, em `mi_db`)
+Regra única dos três caminhos de UPDATE (Produtos, Clientes por `cliId`, Clientes por
+CPF/CNPJ):
+
+- O SET é montado com os campos **mapeados E preenchidos naquela linha**. Campo com a
+  célula vazia fica **de fora do SET** — o valor que está no banco é preservado.
+- Vale por linha: a mesma coluna pode atualizar a linha 1 e ser ignorada na linha 2.
+- **Não existe** como apagar um campo pelo arquivo. Para limpar um campo, use o Manager.
+- A checagem olha o valor **cru** da célula, não o retorno dos `_get_*`: para os campos
+  de `FLOAT_NOT_NULL` (`proVenda`, `proCusto`, …) o `_get_float` converte vazio em `0.0`
+  — correto no INSERT (coluna NOT NULL), destrutivo no UPDATE, onde zeraria o preço.
+- `0` é **valor**, não vazio: `cliDesativa = 0` (ativo) e `proVenda = 0` são gravados.
+- **Obrigatório no UPDATE é só a CHAVE** (`proId` / `cliId`) — `_obrigatorios_efetivos`.
+  Ainda é preciso mapear ao menos um campo além dela, senão não há o que atualizar.
+  A tela reflete isso: sem selo `FALTA`, contador de obrigatórios contando só a chave e
+  a seção renomeada para *"CAMPOS PRINCIPAIS (opcionais no UPDATE)"*.
+
 ### Mapeamento de colunas
 - Cada campo do banco é mapeado a uma coluna do arquivo (auto-mapeamento por nome igual).
 - Campos não usados ficam em `[ ignorar ]`.
@@ -63,6 +80,17 @@ Tabelas: `produto`, `produto_empresa`, `codBarras` (+ lookups).
 - **Lookup** (deve existir): `proNCM` (ncmCodigoNCM), `proCEST` (cesCodigo).
 - Código de barras (`cdbCodigo`) inserido em `codBarras` vinculado ao proId.
 
+### CST do produto — `proCodCst1` (origem) + `proCodCst2` (tributação)
+As duas partes ficam em `produto_empresa` e juntas formam o CST.
+- **`proCodCst1`** é **INT** (não texto) e aceita **um único dígito de 0 a 9** —
+  a origem da mercadoria; `0` = Nacional.
+- **Opcional.** Não mapeado → entra o padrão **`0`** no INSERT
+  (`ProdutosImportMixin.CST1_DEFAULT`), acompanhando o resto da base.
+- **Valor fora de 0–9** (`55`, `A`, `1,5`) **não é gravado**: vira alerta no log e no
+  relatório e o campo é ignorado — no INSERT cai no padrão, no UPDATE mantém o banco.
+  A linha **não** falha por causa disso (padrão das demais regras de negócio).
+- Célula vazia é ausência, não erro. Também é migrado no Max→Max (`_sql_produtos`).
+
 ### Corte automático de textos (evita erro 22001 "dados truncados")
 Método `_get_str_max`. Limites aplicados: `proDescricao` 100, `proLocalizador` 20,
 `proPrateleira` 20, `proCodigo` 50, `proUn` 10, `proCodCSOSN` 3, `proCodCst2` 2,
@@ -111,6 +139,10 @@ Ao clicar em INSERIR, se vazios, o sistema **pergunta** (não bloqueia):
 
 ### UPDATE
 - Por `cliId` (chave) ou, se ausente, por **CPF/CNPJ** (o sistema pergunta).
+- **Obrigatório apenas o `cliId`** (ou o `cliCpfCgc`, quando é a chave). Todos os
+  demais campos são opcionais — ver *"UPDATE: célula vazia não apaga"* abaixo.
+- O preenchimento assistido (Fantasia / RG-Insc / Número) **não roda no UPDATE**: ele
+  preenche células vazias, que é exatamente o que não deve ser gravado por cima.
 - Corte de textos (`_get_str_max`): cliNome 50, cliFantasia 50, cliRgInsc 20, etc.
 
 ---

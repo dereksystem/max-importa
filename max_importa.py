@@ -242,6 +242,23 @@ class CancelavelMixin:
         except Exception:
             pass
 
+    def _obrigatorios_efetivos(self):
+        """Conjunto de campos realmente obrigatórios para a operação da tela.
+
+        No **INSERT** vale o `CAMPOS_OBRIGATORIOS` completo — a linha está sendo
+        criada do zero e o banco exige esses campos.
+        No **UPDATE** só a CHAVE (`CAMPO_CHAVE`: proId / cliId) é obrigatória: o
+        registro já existe, e um campo não mapeado — ou com a célula vazia — apenas
+        fica de fora do SET, preservando o que está no banco.
+
+        Usado tanto pela pintura do mapeamento quanto pelos selos, para que a tela
+        não marque como "FALTA" um campo que a importação não vai exigir."""
+        todos = getattr(self, "CAMPOS_OBRIGATORIOS", ()) or ()
+        if "INSERT" in getattr(self, "_operacao", "INSERT"):
+            return set(todos)
+        chave = getattr(self, "CAMPO_CHAVE", None)
+        return {chave} if chave else set()
+
     def _atualizar_status_mapeamento(self, *_):
         """Atualiza o indicador (✓/✗/—) de cada campo do mapeamento e o rótulo de
         resumo ('X/Y campos mapeados' + aviso se faltam obrigatórios). Chamado pelo
@@ -251,7 +268,7 @@ class CancelavelMixin:
         vars_ = getattr(self, "mapping_vars", None)
         if not vars_:
             return
-        obrigatorios = getattr(self, "CAMPOS_OBRIGATORIOS", ()) or ()
+        obrigatorios = self._obrigatorios_efetivos()
         status = getattr(self, "map_status", {}) or {}
         rows = getattr(self, "map_rows", {}) or {}       # frame de cada linha
         bgs = getattr(self, "map_row_bg", {}) or {}       # cor original de cada linha
@@ -388,6 +405,10 @@ class CancelavelMixin:
         rodape = ctk.CTkFrame(self, fg_color="transparent")
         rodape.pack(side="bottom", fill="x")
 
+        # Linha 1 — estado do mapeamento: contador + barra + resumo NA MESMA LINHA.
+        # Eram 2 linhas dizendo a mesma coisa ("Obrigatórios: X de Y" em cima e
+        # "X/Y campos mapeados — faltam obrigatórios: …" embaixo); juntar devolve
+        # ~40 px de altura ao mapeamento, que é onde o usuário trabalha.
         rod_map = ctk.CTkFrame(rodape, fg_color="transparent")
         rod_map.pack(padx=24, pady=(6, 0), fill="x")
         self.map_contador = ctk.CTkLabel(
@@ -398,31 +419,39 @@ class CancelavelMixin:
                                             corner_radius=999, progress_color=MD_RED,
                                             fg_color=("#EDEFF2", "#2A2E36"))
         self.map_barra.set(0)
-        self.map_barra.pack(side="left", padx=(10, 0))
-
+        self.map_barra.pack(side="left", padx=(10, 12))
         self.lbl_map_resumo = ctk.CTkLabel(
-            rodape, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",
-            font=ctk.CTkFont(size=11), text_color=MD_GRAY)
-        self.lbl_map_resumo.pack(padx=24, pady=(2, 0), anchor="w")
+            rod_map, text="Nenhum campo mapeado ainda — selecione as colunas do arquivo.",
+            font=ctk.CTkFont(size=11), text_color=MD_GRAY, anchor="w")
+        self.lbl_map_resumo.pack(side="left", fill="x", expand=True)
         self._atualizar_status_mapeamento()   # estado inicial (obrigatórios = ✗)
+
         self._criar_barra_perfis(rodape, modulo).pack(padx=24, pady=(4, 0), anchor="w")
 
         self._criar_barra_acoes(rodape, com_acerto=com_acerto)
 
-        self.progress = ctk.CTkProgressBar(rodape, progress_color=MD_RED)
-        self.progress.pack(padx=24, pady=(2, 0), fill="x")
+        # Linha de progresso — barra e rótulo "X de Y (NN%)" lado a lado. O rótulo
+        # ficava numa linha própria, ocupando ~35 px mesmo vazio (fora de importação).
+        _prog = ctk.CTkFrame(rodape, fg_color="transparent")
+        _prog.pack(padx=24, pady=(4, 0), fill="x")
+        self.lbl_progresso = ctk.CTkLabel(_prog, text="", font=ctk.CTkFont(size=11),
+                                          text_color=MD_GRAY, width=190, anchor="e")
+        self.lbl_progresso.pack(side="right", padx=(10, 0))
+        self.progress = ctk.CTkProgressBar(_prog, height=10, progress_color=MD_RED)
+        self.progress.pack(side="left", fill="x", expand=True)
         self.progress.set(0)
-        self.lbl_progresso = ctk.CTkLabel(rodape, text="", font=ctk.CTkFont(size=11),
-                                          text_color=MD_GRAY)
-        self.lbl_progresso.pack(padx=24, pady=(1, 0))
 
         _log_wrap = ctk.CTkFrame(rodape, fg_color="transparent")
-        _log_wrap.pack(padx=24, pady=(4, 10), fill="x")
-        ctk.CTkFrame(_log_wrap, width=4, fg_color=MD_RED, corner_radius=0).pack(
-            side="left", fill="y", padx=(0, 6))
+        _log_wrap.pack(padx=24, pady=(6, 10), fill="x")
+        # ⚠️ `height=1` é OBRIGATÓRIO nesta barrinha decorativa: CTkFrame sem height
+        # nasce com o default de 200 px e `fill="y"` NÃO encolhe abaixo do tamanho
+        # requisitado — ela puxava o bloco do log para 250 px (o textbox pede 105),
+        # roubando ~145 px do mapeamento. Com height=1 ela só ESTICA até o textbox.
+        ctk.CTkFrame(_log_wrap, width=4, height=1, fg_color=MD_RED,
+                     corner_radius=0).pack(side="left", fill="y", padx=(0, 6))
         self.text_log = ctk.CTkTextbox(_log_wrap, height=84,
                                         font=ctk.CTkFont(size=11, family="Consolas"))
-        self.text_log.pack(side="left", fill="x", expand=True)
+        self.text_log.pack(side="left", fill="both", expand=True)
         return rodape
 
     # ── Perfis de mapeamento (salvar/aplicar por layout de arquivo) ──────────
@@ -1376,6 +1405,13 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
         ("proUn",            "produto",         "Unidade",                         True),
         ("ncmCodigoNCM",     "proNCM",          "Código NCM",                      True),
         # ── OPCIONAIS ─────────────────────────────────────────────────────
+        # ⚠️ A tela separa as seções pela PRIMEIRA tupla com obrigatório=False (fora o
+        # proId): um campo opcional no meio do bloco de cima jogaria o cabeçalho
+        # "CAMPOS OPCIONAIS" para antes dos obrigatórios que viessem depois. Por isso o
+        # CST1 fica aqui, e não colado no CST2 — a lista é ORDENADA por seção.
+        # CST1 = origem da mercadoria (0–9, 0 = Nacional); não mapeado entra o padrão 0
+        # no INSERT (ver ProdutosImportMixin.CST1_DEFAULT).
+        ("proCodCst1",       "produto_empresa", "Cód. CST1 — origem (0 a 9)",      False),
         ("proAplicacao",     "produto",         "Aplicação",                       False),
         ("proBalanca",       "produto",         "Balança (0/1)",                   False),
         ("proMedVenda",      "produto",         "Med. Venda",                      False),
@@ -1492,11 +1528,18 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
         self.map_rows = {}     # frame de cada linha (recolorir quando mapeada)
         self.map_row_bg = {}   # cor original de cada linha
         self.map_badge = {}    # selo "FALTA" por campo (some ao mapear)
+        # No UPDATE só o proId é exigido — os demais viram opcionais (a célula
+        # vazia mantém o valor do banco). O agrupamento continua, mudam o rótulo
+        # da seção e os selos.
+        _obrig_ef = self._obrigatorios_efetivos()
+        _titulo_sec = ("  ★  CAMPOS OBRIGATÓRIOS"
+                       if "INSERT" in self._operacao else
+                       "  ★  CAMPOS PRINCIPAIS  (opcionais no UPDATE — vazio mantém o banco)")
         for campo, tabela, descr, obrig in self.CAMPOS_PRODUTO:
             if obrig and not secao_obrig_exibida:
                 ctk.CTkFrame(self.scroll_map, height=2, fg_color=MD_RED).pack(
                     fill="x", padx=4, pady=(8, 2))
-                ctk.CTkLabel(self.scroll_map, text="  ★  CAMPOS OBRIGATÓRIOS",
+                ctk.CTkLabel(self.scroll_map, text=_titulo_sec,
                              font=ctk.CTkFont(size=11, weight="bold"),
                              text_color=MD_RED).pack(anchor="w", padx=6, pady=(0, 4))
                 secao_obrig_exibida = True
@@ -1511,7 +1554,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
 
             if campo == "proId":
                 bg, tc, badge, bc, fw = TC_FIELD_KEY_BG, TC_FIELD_KEY_TXT, " [CHAVE]",        MD_RED,    "bold"
-            elif obrig:
+            elif campo in _obrig_ef:
                 bg, tc, badge, bc, fw = TC_FIELD_OBL_BG, TC_FIELD_OBL_TXT, " [OBRIGATORIO]", "#FF5252", "bold"
             else:
                 _alt_bg = ("#F0F2F5", "#20242A") if _alt_idx % 2 == 0 else "transparent"
@@ -1550,7 +1593,7 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
                 ctk.CTkLabel(nf, text=" CHAVE ", font=ctk.CTkFont(size=10, weight="bold"),
                              corner_radius=5, fg_color=("#F6DAD5", "#5A3A36"),
                              text_color=("#A93226", "#E8A79E")).pack(side="left", padx=(8, 0))
-            elif campo in self.CAMPOS_OBRIGATORIOS:
+            elif campo in _obrig_ef:
                 # "FALTA" é ESTADO: escondido assim que o campo é mapeado.
                 _b = ctk.CTkLabel(nf, text=" FALTA ", font=ctk.CTkFont(size=10, weight="bold"),
                                   corner_radius=5, fg_color=MD_RED, text_color="#FFFFFF")
@@ -1638,27 +1681,11 @@ class JanelaProdutos(ProdutosImportMixin, MapeamentoDBMixin, CancelavelMixin,
                 )
                 return
 
-            # Para campos obrigatorios que ESTAO mapeados no UPDATE,
-            # nao permitir valores vazios/nulos no arquivo
-            self._log("Validando campos mapeados no UPDATE...")
-            invalidos_upd = validar_obrigatorios(
-                self.df, self.mapping, self.CAMPOS_OBRIGATORIOS, apenas_mapeados=True)
-
-            if invalidos_upd:
-                descr_map = {campo: descr for campo, _tab, descr, _ob in self.CAMPOS_PRODUTO}
-                ctx = ("Estes campos estao MAPEADOS e sao obrigatorios, mas estao "
-                       "vazios no arquivo. Corrija o arquivo OU remova o mapeamento "
-                       "desses campos (o sistema mantera o valor atual do banco).")
-                msg, ep, total_upd, n_linhas = _montar_msg_obrigatorios(
-                    invalidos_upd, descr_map, "PRODUTOS_UPDATE_VALIDACAO", contexto=ctx)
-                messagebox.showerror("Campos obrigatorios em branco", msg, parent=self)
-                self._log(f"UPDATE bloqueado — {total_upd} celula(s) vazia(s) em {n_linhas} linha(s).")
-                if ep:
-                    self._log("Arquivo de erros gerado: " + ep)
-                self._salvar_relatorio()
-                return
-
-            self._log("Validacao UPDATE OK.")
+            # Nenhuma outra validacao de obrigatorios: no UPDATE, so o proId e
+            # exigido. Celula vazia num campo mapeado NAO e erro nem apaga o
+            # banco — o campo simplesmente fica de fora do SET daquela linha
+            # (ver _montar_set_update em mi_db).
+            self._log("Validacao UPDATE OK — apenas proId e obrigatorio.")
             self.btn_import.configure(state="disabled")
             self.progress.set(0)
             self._dry_run = bool(self.simular_var.get())
@@ -1873,13 +1900,18 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
         self.map_rows = {}     # frame de cada linha (recolorir quando mapeada)
         self.map_row_bg = {}   # cor original de cada linha
         self.map_badge = {}    # selo "FALTA" por campo (some ao mapear)
+        # No UPDATE só o cliId é exigido — ver _obrigatorios_efetivos.
+        _obrig_ef = self._obrigatorios_efetivos()
+        _titulo_sec = ("  ★  CAMPOS OBRIGATÓRIOS"
+                       if "INSERT" in self._operacao else
+                       "  ★  CAMPOS PRINCIPAIS  (opcionais no UPDATE — vazio mantém o banco)")
         for campo, tabela, descr, obrig in self.CAMPOS_CLIENTE:
             # Separadores de seção
             if campo == "cliId" and not secao_obrig_ok:
                 sep = ctk.CTkFrame(self.scroll_map, height=2, fg_color=MD_RED)
                 sep.grid(row=grid_row, column=0, columnspan=3, padx=4, pady=(8, 2), sticky="ew")
                 grid_row += 1
-                ctk.CTkLabel(self.scroll_map, text="  ★  CAMPOS OBRIGATÓRIOS",
+                ctk.CTkLabel(self.scroll_map, text=_titulo_sec,
                              font=ctk.CTkFont(size=11, weight="bold"),
                              text_color=MD_RED).grid(
                                  row=grid_row, column=0, columnspan=3, padx=6, pady=(0, 4), sticky="w")
@@ -1902,7 +1934,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
                 bg_cor, txt_cor, badge_txt, badge_cor, fw = TC_FIELD_KEY_BG, TC_FIELD_KEY_TXT, " [CHAVE]",        MD_RED,    "bold"
             elif campo in self.CAMPOS_INTERATIVOS:
                 bg_cor, txt_cor, badge_txt, badge_cor, fw = TC_FIELD_OBL_BG, TC_FIELD_OBL_TXT, " [AUTO/OPCIONAL]", "#E69500", "bold"
-            elif obrig:
+            elif campo in _obrig_ef:
                 bg_cor, txt_cor, badge_txt, badge_cor, fw = TC_FIELD_OBL_BG, TC_FIELD_OBL_TXT, " [OBRIGATÓRIO]", "#FF5252", "bold"
             else:
                 _alt_bg = ("#F0F2F5", "#20242A") if _alt_idx % 2 == 0 else "transparent"
@@ -1939,7 +1971,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
                 ctk.CTkLabel(nf, text=" AUTO ", font=ctk.CTkFont(size=10, weight="bold"),
                              corner_radius=5, fg_color=("#FFF7ED", "#3A2E1C"),
                              text_color=("#8A6D3B", "#E0C48A")).pack(side="left", padx=(8, 0))
-            elif campo in self.CAMPOS_OBRIGATORIOS:
+            elif campo in _obrig_ef:
                 _b = ctk.CTkLabel(nf, text=" FALTA ", font=ctk.CTkFont(size=10, weight="bold"),
                                   corner_radius=5, fg_color=MD_RED, text_color="#FFFFFF")
                 _b.pack(side="left", padx=(8, 0))
@@ -2117,6 +2149,39 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
         operacao  = self._operacao
         is_insert = "INSERT" in operacao
 
+        # ══════════════════════════════════════════════════════════════════
+        # MODO UPDATE — so a CHAVE e obrigatoria; os demais campos sao opcionais
+        # ══════════════════════════════════════════════════════════════════
+        # A chave e o cliId. Sem ele, cliCpfCgc pode servir de chave alternativa
+        # (o _confirmar_update_por_cpf trata esse caminho). Celula vazia num campo
+        # mapeado nao e erro: aquele campo fica de fora do SET e o valor atual do
+        # banco e preservado (ver _montar_set_update em mi_db).
+        if not is_insert:
+            if "cliId" not in self.mapping and "cliCpfCgc" not in self.mapping:
+                messagebox.showerror(
+                    "Campo Obrigatorio para UPDATE",
+                    "Para atualizar e preciso mapear o cliId (ou, na falta dele, "
+                    "o cliCpfCgc como chave alternativa).\n"
+                    "Ele e usado para localizar o cliente no banco.",
+                    parent=self
+                )
+                return
+
+            outros = [c for c in self.mapping if c not in ("cliId", "cliCpfCgc")]
+            if not outros:
+                messagebox.showwarning(
+                    "Nenhum Campo para Atualizar",
+                    "Somente a chave esta mapeada.\n\n"
+                    "Nao ha nenhuma informacao para atualizar alem dela.\n"
+                    "Mapeie ao menos um campo de dados antes de continuar.",
+                    parent=self
+                )
+                return
+
+            self._log("Validacao UPDATE OK — apenas a chave e obrigatoria.")
+            self._despachar_update_clientes()
+            return
+
         # ── Validação 1: campos obrigatórios mapeados ─────────────────────
         nao_mapeados = campos_nao_mapeados(self.mapping, self.CAMPOS_OBRIGATORIOS)
         if nao_mapeados:
@@ -2164,32 +2229,34 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
                       ", ".join(str(x) for x in sorted(set(reservados))))
             return
 
-        self._log("Validacao OK — verificando modo de atualizacao...")
+        self._log("Validacao OK — iniciando INSERT...")
 
-        if is_insert:
-            self.btn_import.configure(state="disabled")
-            self.progress.set(0)
-            self._dry_run = bool(self.simular_var.get())
-            self._op_iniciada()
-            threading.Thread(target=self._inserir_clientes, daemon=True).start()
-        else:
-            # Verifica se cliId está disponível para o UPDATE
-            col_id  = self.mapping.get("cliId")
-            tem_ids = False
-            if col_id:
-                vals = self.df[col_id].dropna().astype(str).str.strip()
-                vals = vals[~vals.str.upper().isin(["", "NULL", "NONE", "NAN"])]
-                tem_ids = len(vals) > 0
+        self.btn_import.configure(state="disabled")
+        self.progress.set(0)
+        self._dry_run = bool(self.simular_var.get())
+        self._op_iniciada()
+        threading.Thread(target=self._inserir_clientes, daemon=True).start()
 
-            if not tem_ids:
-                # cliId ausente/ignorado — perguntar se usa CPF/CNPJ
-                self._confirmar_update_por_cpf()
-            else:
-                self.btn_import.configure(state="disabled")
-                self.progress.set(0)
-                self._dry_run = bool(self.simular_var.get())
-                self._op_iniciada()
-                threading.Thread(target=self._atualizar_clientes, daemon=True).start()
+    def _despachar_update_clientes(self):
+        """Escolhe a chave do UPDATE e dispara o worker: cliId quando o arquivo
+        traz IDs de verdade; senao, cai no CPF/CNPJ (com confirmacao)."""
+        col_id  = self.mapping.get("cliId")
+        tem_ids = False
+        if col_id:
+            vals = self.df[col_id].dropna().astype(str).str.strip()
+            vals = vals[~vals.str.upper().isin(["", "NULL", "NONE", "NAN"])]
+            tem_ids = len(vals) > 0
+
+        if not tem_ids:
+            # cliId ausente/ignorado — perguntar se usa CPF/CNPJ
+            self._confirmar_update_por_cpf()
+            return
+
+        self.btn_import.configure(state="disabled")
+        self.progress.set(0)
+        self._dry_run = bool(self.simular_var.get())
+        self._op_iniciada()
+        threading.Thread(target=self._atualizar_clientes, daemon=True).start()
 
     # ── INSERT clientes ───────────────────────────────────────────────────
     def _confirmar_update_por_cpf(self):

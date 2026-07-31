@@ -28,6 +28,32 @@ class ProdutosImportMixin:
         "proAtacado", "proCusto", "proEstoqueAtual", "proEstoqueMin", "proVenda"
     }
 
+    # Origem da mercadoria (`produto_empresa.proCodCst1`, INT). É a 1ª parte do CST:
+    # junto com o proCodCst2 (tributação, varchar(2)) forma o código completo. Aceita
+    # um único dígito 0–9 (0 = Nacional).
+    CST1_DEFAULT = 0
+
+    def _get_cst1(self, row):
+        """Lê o proCodCst1 validando o intervalo 0–9.
+
+        Fora do intervalo (55, "A", texto) NÃO grava lixo num campo fiscal: registra
+        alerta e devolve None — no INSERT vira o CST1_DEFAULT, no UPDATE o campo fica
+        de fora do SET (mantém o que está no banco). Segue o padrão das demais regras
+        de negócio do projeto: avisa, não bloqueia."""
+        if "proCodCst1" not in self.mapping:
+            return None
+        bruto = self._get_str(row, "proCodCst1")
+        if bruto is None:                       # célula vazia: nada a dizer
+            return None
+        valor = self._get_int(row, "proCodCst1")
+        if valor is None or not (0 <= valor <= 9):
+            self._registrar_alerta(
+                "proCodCst1 fora de 0-9", bruto,
+                msg=f"⚠️  proCodCst1 inválido: '{bruto}' — aceita só um dígito de 0 a 9; "
+                    f"campo ignorado nesta linha.")
+            return None
+        return valor
+
     # ── INSERT combinado (otimização c): produto + produto_empresa num único batch ──
     # O INSERT do produto já vinha com SCOPE_IDENTITY no mesmo comando; aqui o
     # produto_empresa entra JUNTO, caindo de ~3 round-trips por linha para 1 (o
@@ -45,10 +71,10 @@ class ProdutosImportMixin:
         "SET @id = SCOPE_IDENTITY();\n"
         "IF @id IS NULL RAISERROR('SCOPE_IDENTITY NULL apos INSERT produto', 16, 1);\n"
         "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = @id AND empId = ?)\n"
-        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst2,\n"
-        "    proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
+        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst1,\n"
+        "    proCodCst2, proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
         "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
-        "    proUnTribId) VALUES (@id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
+        "    proUnTribId) VALUES (@id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);\n"
         "SELECT @id;"
     )
     # Modo proId-do-arquivo (IDENTITY_INSERT ON/OFF dentro do batch): id já conhecido.
@@ -62,10 +88,10 @@ class ProdutosImportMixin:
         "    proUnTribId) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
         "SET IDENTITY_INSERT produto OFF;\n"
         "IF NOT EXISTS (SELECT 1 FROM produto_empresa WHERE proId = ? AND empId = ?)\n"
-        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst2,\n"
-        "    proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
+        "  INSERT INTO produto_empresa (proId, empId, proAtacado, proCodCSOSN, proCodCst1,\n"
+        "    proCodCst2, proCodigo, proCusto, proDesativaProd, proEstoqueAtual, proEstoqueMin,\n"
         "    proLocalizador, proPrateleira, proVenda, proUn, proUnComercialId, proUnTrib,\n"
-        "    proUnTribId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+        "    proUnTribId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
     )
 
     def _inserir_produtos(self):
@@ -110,7 +136,7 @@ class ProdutosImportMixin:
                     uns_criadas.add(unp_un)
 
                 # ── produto + produto_empresa num único batch (otimização c) ──
-                # Campos do produto (18) e do produto_empresa (15) montados uma vez.
+                # Campos do produto (18) e do produto_empresa (16) montados uma vez.
                 _pro18 = (
                     self._get_str_max(row, "proDescricao", 100),
                     self._get_str(row, "proAplicacao"),
@@ -125,9 +151,11 @@ class ProdutosImportMixin:
                     classe_id, ncm_id, cest_id,
                     unp_id, unp_un, unp_id,
                 )
-                _pe15 = (
+                _cst1 = self._get_cst1(row)
+                _pe16 = (
                     self._get_float(row, "proAtacado"),
                     self._get_str_max(row, "proCodCSOSN", 3),
+                    self.CST1_DEFAULT if _cst1 is None else _cst1,
                     self._get_str_max(row, "proCodCst2", 2),
                     self._get_str_max(row, "proCodigo", 50),
                     self._get_float(row, "proCusto"),
@@ -142,7 +170,7 @@ class ProdutosImportMixin:
                 )
                 if auto_id:
                     # proId gerado pelo banco: SCOPE_IDENTITY (server-side) devolve o id.
-                    cursor.execute(self._SQL_PROD_AUTO, _pro18 + (emp_id, emp_id) + _pe15)
+                    cursor.execute(self._SQL_PROD_AUTO, _pro18 + (emp_id, emp_id) + _pe16)
                     fetched = cursor.fetchone()
                     new_id = fetched[0] if fetched else None
                     if new_id is None:
@@ -151,7 +179,7 @@ class ProdutosImportMixin:
                 else:
                     # proId do arquivo (IDENTITY_INSERT ON/OFF dentro do batch).
                     cursor.execute(self._SQL_PROD_ID,
-                                   (pro_id, pro_id) + _pro18 + (pro_id, emp_id, pro_id, emp_id) + _pe15)
+                                   (pro_id, pro_id) + _pro18 + (pro_id, emp_id, pro_id, emp_id) + _pe16)
 
                 # ── Inserir Codigo EAN em codBarras ──────────────────────────
                 ean = self._get_str(row, "cdbCodigo")
@@ -250,15 +278,16 @@ class ProdutosImportMixin:
                 ncm_id      = self._lookup(cursor, "proNCM",  "ncmId", "ncmCodigoNCM", self._get_str(row, "ncmCodigoNCM"))
                 cest_id     = self._lookup(cursor, "proCEST", "cesId", "cesCodigo",    self._get_str(row, "cesCodigo"))
 
+                _cst1       = self._get_cst1(row)     # origem 0–9; None = não mexer
+
                 # ── unidade em produtoUn (cadastra se nao existir) ────────────
                 pro_un_upd  = self._get_str(row, "proUn") if "proUn" in self.mapping else None
                 un_info_upd = self._get_or_create_unidade(cursor, pro_un_upd) if pro_un_upd else None
                 if un_info_upd and un_info_upd.get("criada"):
                     uns_criadas_upd.add(un_info_upd["unpUn"])
 
-                # Campos a atualizar na tabela produto (apenas os mapeados)
-                set_prod  = []
-                vals_prod = []
+                # Campos a atualizar na tabela produto (mapeados E preenchidos —
+                # célula vazia não entra no SET, para não apagar o que está no banco)
                 mapa_prod = {
                     "proDescricao":     (lambda r, c: self._get_str_max(r, c, 100), "proDescricao"),
                     "proAplicacao":     (self._get_str,   "proAplicacao"),
@@ -270,10 +299,7 @@ class ProdutosImportMixin:
                     "proUn":            (lambda r, c: self._get_str_max(r, c, 10),  "proUn"),
                     "proTipo":          (lambda r, c: self._get_str_max(r, c, 1),   "proTipo"),
                 }
-                for col_db, (fn, campo) in mapa_prod.items():
-                    if campo in self.mapping:
-                        set_prod.append(f"{col_db} = ?")
-                        vals_prod.append(fn(row, campo))
+                set_prod, vals_prod = self._montar_set_update(row, mapa_prod)
 
                 if fab_id      is not None: set_prod.append("proFab = ?");      vals_prod.append(fab_id)
                 if grupo_id    is not None: set_prod.append("proGrupo = ?");    vals_prod.append(grupo_id)
@@ -294,9 +320,7 @@ class ProdutosImportMixin:
                         vals_prod + [pro_id]
                     )
 
-                # Campos a atualizar em produto_empresa
-                set_emp  = []
-                vals_emp = []
+                # Campos a atualizar em produto_empresa (idem: só os preenchidos)
                 mapa_emp = {
                     "proAtacado":      (self._get_float, "proAtacado"),
                     "proCodCSOSN":     (lambda r, c: self._get_str_max(r, c, 3),  "proCodCSOSN"),
@@ -310,10 +334,13 @@ class ProdutosImportMixin:
                     "proPrateleira":   (lambda r, c: self._get_str_max(r, c, 20), "proPrateleira"),
                     "proVenda":        (self._get_float, "proVenda"),
                 }
-                for col_db, (fn, campo) in mapa_emp.items():
-                    if campo in self.mapping:
-                        set_emp.append(f"{col_db} = ?")
-                        vals_emp.append(fn(row, campo))
+                set_emp, vals_emp = self._montar_set_update(row, mapa_emp)
+
+                # proCodCst1 não entra no mapa_emp: tem validação própria (0–9) e um
+                # valor inválido deve ser IGNORADO, não gravado. _get_cst1 devolve None
+                # nesse caso e o campo fica fora do SET, preservando o banco.
+                if _cst1 is not None:
+                    set_emp.append("proCodCst1 = ?"); vals_emp.append(_cst1)
 
                 # Unidade encontrada → atualiza campos de unidade em produto_empresa
                 if pro_un_upd and un_info_upd:
@@ -894,8 +921,7 @@ class ClientesImportMixin:
                     self._set_progresso(idx + 1, total)
                     continue
 
-                set_cli  = []
-                vals_cli = []
+                # Só os campos mapeados E preenchidos (vazio não apaga o banco)
                 mapa_cli = {
                     "cliNome":          (self._get_str, "cliNome"),
                     "cliFantasia":      (self._get_str, "cliFantasia"),
@@ -912,10 +938,7 @@ class ClientesImportMixin:
                     "cliDesativa":      (self._get_int, "cliDesativa"),
                     "cliTipoCad":       (self._get_int, "cliTipoCad"),
                 }
-                for col_db, (fn, campo) in mapa_cli.items():
-                    if campo in self.mapping:
-                        set_cli.append(f"{col_db} = ?")
-                        vals_cli.append(fn(row, campo))
+                set_cli, vals_cli = self._montar_set_update(row, mapa_cli)
 
                 # cliTipo: usa o mapeado; senão deriva do CPF/CNPJ (só atualiza
                 # quando há valor — CPF/CNPJ vazio deixa o campo como está)
@@ -1000,9 +1023,7 @@ class ClientesImportMixin:
 
                 data_inc = self._get_datetime(row, "DataInclusao")
 
-                # ── UPDATE cliente ───────────────────────────────────────────
-                set_cli  = []
-                vals_cli = []
+                # ── UPDATE cliente (mapeados E preenchidos) ──────────────────
                 mapa_cli = {
                     "cliCpfCgc":        (self._get_str, "cliCpfCgc"),
                     "cliNome":          (self._get_str, "cliNome"),
@@ -1020,10 +1041,7 @@ class ClientesImportMixin:
                     "cliDesativa":      (self._get_int, "cliDesativa"),
                     "cliTipoCad":       (self._get_int, "cliTipoCad"),
                 }
-                for col_db, (fn, campo) in mapa_cli.items():
-                    if campo in self.mapping:
-                        set_cli.append(f"{col_db} = ?")
-                        vals_cli.append(fn(row, campo))
+                set_cli, vals_cli = self._montar_set_update(row, mapa_cli)
 
                 # cliTipo: usa o mapeado; senão deriva do CPF/CNPJ (só atualiza
                 # quando há valor — CPF/CNPJ vazio deixa o campo como está)

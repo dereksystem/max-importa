@@ -577,3 +577,187 @@ def test_migrar_orquestrador_ponta_a_ponta(orig_conn, db_conn):
     # reconciliação rodou e a migração concluiu
     assert any("CONFERÊNCIA ORIGEM × DESTINO" in l for l in mig._logs)
     assert any("Migração concluída" in l for l in mig._logs)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UPDATE não apaga o que já está no banco (célula vazia = "não mexer")
+# ─────────────────────────────────────────────────────────────────────────────
+def test_update_produtos_celula_vazia_preserva_banco(db_conn):
+    """Insere um produto completo e depois roda um UPDATE em que só a descrição
+    vem preenchida. Os demais campos MAPEADOS estão vazios no arquivo e devem
+    ficar INTACTOS no banco — antes viravam NULL (texto) ou 0.0 (FLOAT_NOT_NULL,
+    caso de proVenda/proCusto: o preço era zerado)."""
+    cur = db_conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+
+    campos_ins = ["proId", "proDescricao", "proAplicacao", "proCodCst2", "proCodigo",
+                  "proUn", "ncmCodigoNCM", "proVenda", "proCusto", "proEstoqueAtual"]
+    df_ins = pd.DataFrame([{
+        "proId": "", "proDescricao": f"PROD {tag} ORIG", "proAplicacao": "APLICACAO ORIGINAL",
+        "proCodCst2": "00", "proCodigo": f"{tag}U", "proUn": "UN", "ncmCodigoNCM": ncm,
+        "proVenda": "99,90", "proCusto": "50,00", "proEstoqueAtual": "7",
+    }])
+    obj = _harness_produtos(db_conn, df_ins, {c: c for c in campos_ins})
+    obj._inserir_produtos()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-5:]
+
+    cur = db_conn.cursor()
+    pro_id = cur.execute("SELECT proId FROM produto_empresa WHERE proCodigo = ?",
+                         f"{tag}U").fetchone()[0]
+
+    # UPDATE: só a descrição preenchida; os outros campos seguem MAPEADOS e VAZIOS
+    df_upd = pd.DataFrame([{
+        "proId": str(pro_id), "proDescricao": f"PROD {tag} NOVA",
+        "proAplicacao": "", "proVenda": "", "proCusto": "", "proEstoqueAtual": "",
+    }])
+    obj2 = _harness_produtos(db_conn, df_upd, {
+        c: c for c in ["proId", "proDescricao", "proAplicacao",
+                       "proVenda", "proCusto", "proEstoqueAtual"]})
+    obj2._atualizar_produtos()
+
+    cur = db_conn.cursor()
+    desc, apl = cur.execute(
+        "SELECT proDescricao, proAplicacao FROM produto WHERE proId = ?", pro_id).fetchone()
+    venda, custo, estoque = cur.execute(
+        "SELECT proVenda, proCusto, proEstoqueAtual FROM produto_empresa "
+        "WHERE proId = ?", pro_id).fetchone()
+
+    assert desc == f"PROD {tag} NOVA"                    # o que veio preenchido MUDA
+    assert apl == "APLICACAO ORIGINAL"                   # vazio NÃO virou NULL
+    assert float(venda) == pytest.approx(99.90)          # vazio NÃO zerou o preço
+    assert float(custo) == pytest.approx(50.00)          # vazio NÃO zerou o custo
+    assert float(estoque) == pytest.approx(7)
+
+
+def test_update_clientes_celula_vazia_preserva_banco(db_conn):
+    """Mesma regra nos Clientes: e-mail/telefone/endereço vazios no arquivo não
+    podem apagar o cadastro existente."""
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["cliId", "cliCpfCgc", "cliNome", "cliFantasia", "cliRgInsc",
+              "cliFatEnd", "cliFatEndNumero", "cliFatBairro", "cliFatCidade",
+              "cliFatUf", "cliFatCep", "cliFatCidCodIBGE"]
+    linha = _linha_cliente(tag, "UPD", "12345678000190")
+    obj = _harness_clientes(db_conn, pd.DataFrame([linha]), {c: c for c in campos})
+    obj._inserir_clientes()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+
+    cur = db_conn.cursor()
+    cli_id = cur.execute("SELECT cliId FROM cliente WHERE cliNome = ?",
+                         f"CLIENTE {tag} UPD").fetchone()[0]
+
+    df_upd = pd.DataFrame([{
+        "cliId": str(cli_id), "cliNome": f"CLIENTE {tag} RENOMEADO",
+        "cliFantasia": "", "cliFatEnd": "", "cliFatCidade": "", "cliFatUf": "",
+    }])
+    obj2 = _harness_clientes(db_conn, df_upd, {
+        c: c for c in ["cliId", "cliNome", "cliFantasia",
+                       "cliFatEnd", "cliFatCidade", "cliFatUf"]})
+    obj2._atualizar_clientes()
+
+    cur = db_conn.cursor()
+    nome, fant, end, cid, uf = cur.execute(
+        "SELECT cliNome, cliFantasia, cliFatEnd, cliFatCidade, cliFatUf "
+        "FROM cliente WHERE cliId = ?", cli_id).fetchone()
+
+    assert nome == f"CLIENTE {tag} RENOMEADO"    # preenchido MUDA
+    assert fant == f"FANT {tag}UPD"              # vazios ficam INTACTOS
+    assert end == "RUA TESTE"
+    assert cid == "SAO PAULO"
+    assert uf == "SP"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# proCodCst1 — origem da mercadoria (INT 0-9), compoe o CST com o proCodCst2
+# ─────────────────────────────────────────────────────────────────────────────
+def test_insert_produto_grava_cst1_mapeado(db_conn):
+    cur = db_conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst1", "proCodCst2", "proCodigo",
+              "proUn", "ncmCodigoNCM"]
+    df = pd.DataFrame([{
+        "proId": "", "proDescricao": f"PROD {tag} CST", "proCodCst1": "3",
+        "proCodCst2": "60", "proCodigo": f"{tag}C", "proUn": "UN",
+        "ncmCodigoNCM": ncm,
+    }])
+    obj = _harness_produtos(db_conn, df, {c: c for c in campos})
+    obj._inserir_produtos()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-5:]
+
+    cst1, cst2 = db_conn.cursor().execute(
+        "SELECT proCodCst1, proCodCst2 FROM produto_empresa WHERE proCodigo = ?",
+        f"{tag}C").fetchone()
+    assert cst1 == 3          # gravado como INT, nao como texto
+    assert cst2 == "60"       # o par continua intacto
+
+
+def test_insert_produto_sem_cst1_usa_o_padrao_zero(db_conn):
+    """Campo nao mapeado: entra 0 (Nacional), como o resto da base ja usa."""
+    cur = db_conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst2", "proCodigo", "proUn", "ncmCodigoNCM"]
+    df = pd.DataFrame([{
+        "proId": "", "proDescricao": f"PROD {tag} SEMCST", "proCodCst2": "00",
+        "proCodigo": f"{tag}S", "proUn": "UN", "ncmCodigoNCM": ncm,
+    }])
+    obj = _harness_produtos(db_conn, df, {c: c for c in campos})
+    obj._inserir_produtos()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-5:]
+
+    cst1 = db_conn.cursor().execute(
+        "SELECT proCodCst1 FROM produto_empresa WHERE proCodigo = ?", f"{tag}S").fetchone()[0]
+    assert cst1 == 0
+
+
+def test_insert_produto_cst1_invalido_avisa_e_usa_o_padrao(db_conn):
+    """55 nao e origem valida: o produto entra, o campo cai no padrao e fica o alerta."""
+    cur = db_conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst1", "proCodCst2", "proCodigo",
+              "proUn", "ncmCodigoNCM"]
+    df = pd.DataFrame([{
+        "proId": "", "proDescricao": f"PROD {tag} RUIM", "proCodCst1": "55",
+        "proCodCst2": "00", "proCodigo": f"{tag}R", "proUn": "UN", "ncmCodigoNCM": ncm,
+    }])
+    obj = _harness_produtos(db_conn, df, {c: c for c in campos})
+    obj._inserir_produtos()
+
+    assert obj._ultimo_resultado["inseridos"] == 1, "linha nao deve falhar por causa do CST1"
+    cst1 = db_conn.cursor().execute(
+        "SELECT proCodCst1 FROM produto_empresa WHERE proCodigo = ?", f"{tag}R").fetchone()[0]
+    assert cst1 == 0
+    assert obj._alertas_regras.get("proCodCst1 fora de 0-9") == 1
+
+
+def test_update_produto_altera_cst1_e_invalido_preserva(db_conn):
+    cur = db_conn.cursor()
+    ncm = _ncm_existente(cur)
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["proId", "proDescricao", "proCodCst1", "proCodCst2", "proCodigo",
+              "proUn", "ncmCodigoNCM"]
+    df = pd.DataFrame([{
+        "proId": "", "proDescricao": f"PROD {tag} UPD", "proCodCst1": "2",
+        "proCodCst2": "00", "proCodigo": f"{tag}X", "proUn": "UN", "ncmCodigoNCM": ncm,
+    }])
+    obj = _harness_produtos(db_conn, df, {c: c for c in campos})
+    obj._inserir_produtos()
+    pro_id = db_conn.cursor().execute(
+        "SELECT proId FROM produto_empresa WHERE proCodigo = ?", f"{tag}X").fetchone()[0]
+
+    # UPDATE valido: 2 -> 8
+    o2 = _harness_produtos(db_conn, pd.DataFrame([{"proId": str(pro_id), "proCodCst1": "8"}]),
+                           {"proId": "proId", "proCodCst1": "proCodCst1"})
+    o2._atualizar_produtos()
+    assert db_conn.cursor().execute(
+        "SELECT proCodCst1 FROM produto_empresa WHERE proId = ?", pro_id).fetchone()[0] == 8
+
+    # UPDATE invalido: mantem o 8 que estava no banco (nao zera, nao grava 99)
+    o3 = _harness_produtos(db_conn, pd.DataFrame([{"proId": str(pro_id), "proCodCst1": "99"}]),
+                           {"proId": "proId", "proCodCst1": "proCodCst1"})
+    o3._atualizar_produtos()
+    assert db_conn.cursor().execute(
+        "SELECT proCodCst1 FROM produto_empresa WHERE proId = ?", pro_id).fetchone()[0] == 8
+    assert o3._alertas_regras.get("proCodCst1 fora de 0-9") == 1

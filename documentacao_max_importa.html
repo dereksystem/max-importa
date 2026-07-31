@@ -300,7 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="sidebar-logo">
     <div class="app-name">Max_Importa</div>
     <div class="app-sub">DOCUMENTAÇÃO TÉCNICA</div>
-    <div class="version">v4.0.1 — 2026</div>
+    <div class="version">v4.0.2 — 2026</div>
   </div>
 
   <div class="nav-section">Visão Geral</div>
@@ -367,7 +367,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-tag">Documentação Técnica — v4.0.1</div>
+  <div class="hero-tag">Documentação Técnica — v4.0.2</div>
   <h1>Max_<span>Importa</span></h1>
   <p>Importador de dados para o sistema MaxManager. Centraliza a importação de Produtos, Clientes/Fornecedores e lançamentos Financeiros via arquivos CSV ou TXT, e a <strong>Migração entre Bancos MaxData</strong> (banco → banco, na mesma instância SQL), com interface visual MaxData, mapeamento automático de colunas e rastreabilidade completa por logs.</p>
   <div class="hero-chips">
@@ -444,14 +444,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 <div class="section-anchor" id="instalacao"></div>
 <div class="section-label">03 — Instalação</div>
 <h2 class="section-title">Instalação pelo Instalador</h2>
-<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.1.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
+<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.2.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
 
 <div class="steps">
   <div class="step">
     <div class="step-num">1</div>
     <div class="step-body">
       <div class="step-title">Executar como Administrador</div>
-      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.1.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
+      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.2.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
     </div>
   </div>
   <div class="step">
@@ -643,7 +643,7 @@ log_dir = C:\Max\MaxImporta\Log</code>
     <div class="step-num">4</div>
     <div class="step-body">
       <div class="step-title">Validação pré-importação</div>
-      <div class="step-text">Ao clicar em <strong>"🚀 INICIAR IMPORTAÇÃO"</strong>, o sistema valida todos os campos obrigatórios em todas as linhas antes de iniciar. Qualquer valor vazio, NULL, NONE ou NAN em campo obrigatório bloqueia a importação e exibe as linhas com problema.</div>
+      <div class="step-text">Ao clicar em <strong>"🚀 INICIAR IMPORTAÇÃO"</strong>, o sistema valida os campos obrigatórios antes de iniciar. <strong>No INSERT</strong>, qualquer valor vazio, NULL, NONE ou NAN em campo obrigatório bloqueia a importação e exibe as linhas com problema. <strong>No UPDATE</strong> (desde a v4.0.2) só a <strong>chave</strong> é exigida — o registro já existe no banco; os demais campos são opcionais.</div>
     </div>
   </div>
 </div>
@@ -652,7 +652,29 @@ log_dir = C:\Max\MaxImporta\Log</code>
   <div class="card"><div class="card-icon">🟡</div><div class="card-title">CHAVE</div><div class="card-body">Campo de identificação primária (proId / cliId). Regras especiais de validação e geração automática por IDENTITY.</div></div>
   <div class="card"><div class="card-icon">🔴</div><div class="card-title">OBRIGATÓRIO</div><div class="card-body">Deve ser mapeado e preenchido em todas as linhas. Importação bloqueada se houver valor vazio ou NULL.</div></div>
   <div class="card"><div class="card-icon">🟣</div><div class="card-title">LOOKUP</div><div class="card-body">Consultado em tabela auxiliar (ex: produtoUn, proNCM). O valor precisa existir no banco de dados.</div></div>
-  <div class="card"><div class="card-icon">⚫</div><div class="card-title">OPCIONAL</div><div class="card-body">Pode ficar em [ ignorar ]. O sistema grava NULL quando não informado ou quando o valor é vazio.</div></div>
+  <div class="card"><div class="card-icon">⚫</div><div class="card-title">OPCIONAL</div><div class="card-body">Pode ficar em [ ignorar ]. <strong>No INSERT</strong>, grava NULL quando não informado ou vazio. <strong>No UPDATE</strong>, célula vazia <strong>mantém</strong> o valor que está no banco.</div></div>
+</div>
+
+<div class="callout callout-tip" style="margin-top:20px;">
+  <div class="callout-icon">🛡️</div>
+  <div class="callout-body"><strong>No UPDATE, célula vazia NÃO apaga (v4.0.2):</strong> se uma coluna
+  está mapeada mas a célula daquela linha está em branco, o campo é <strong>deixado de fora</strong> da
+  atualização e o valor que já está no banco é preservado. Antes, o branco era gravado por cima — apagava
+  e-mail, endereço e afins, e nos campos de preço chegava a <strong>zerar</strong> venda e custo. A regra
+  vale por linha: a mesma coluna pode atualizar uma linha e ser ignorada na seguinte. <strong>Não é
+  possível limpar um campo pelo arquivo</strong> — para isso, use o Manager.</div>
+</div>
+
+<div class="callout callout-info" style="margin-top:16px;">
+  <div class="callout-icon">🔑</div>
+  <div class="callout-body"><strong>No UPDATE só a chave é obrigatória (v4.0.2):</strong> em Produtos, o
+  <code style="font-family:var(--mono);font-size:11px;">proId</code>; em Clientes, o
+  <code style="font-family:var(--mono);font-size:11px;">cliId</code> (ou o
+  <code style="font-family:var(--mono);font-size:11px;">cliCpfCgc</code>, quando o cliId não vem no
+  arquivo). Todo o resto é opcional — dá para atualizar só o preço de um produto sem precisar mapear
+  descrição, CST, código, unidade e NCM. Continua sendo necessário mapear <strong>ao menos um</strong>
+  campo além da chave, senão não há o que atualizar. Nessa operação a tela não mostra o selo
+  <strong>FALTA</strong> e o contador passa a considerar apenas a chave.</div>
 </div>
 
 <div class="ui-block">
@@ -685,7 +707,8 @@ log_dir = C:\Max\MaxImporta\Log</code>
       <tbody>
         <tr><td class="fname">proId <span class="fbadge b-key">CHAVE</span></td><td class="ftype">produto</td><td class="ftype">Inteiro</td><td class="fdesc">ID do produto. No INSERT: se omitido usa IDENTITY. Se informado, verifica colisão. No UPDATE: obrigatório para localizar o registro.</td></tr>
         <tr><td class="fname">proDescricao <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto</td><td class="ftype">Texto (120)</td><td class="fdesc">Descrição completa do produto</td></tr>
-        <tr><td class="fname">proCodCst2 <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto (10)</td><td class="fdesc">Código de Situação Tributária — ex: 00, 60, 102, 500</td></tr>
+        <tr><td class="fname">proCodCst2 <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto (10)</td><td class="fdesc">Código de Situação Tributária — ex: 00, 60, 102, 500. É a segunda parte do CST; a origem fica no proCodCst1.</td></tr>
+        <tr><td class="fname">proCodCst1 <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">produto_empresa</td><td class="ftype">Inteiro (0 a 9)</td><td class="fdesc"><strong>Origem da mercadoria</strong> — a primeira parte do CST, que se completa com o proCodCst2 (tributação). Aceita <strong>um único dígito de 0 a 9</strong> (0 = Nacional). Se não for mapeado, entra <strong>0</strong>. Valor fora da faixa não é gravado: vira aviso no relatório e o campo é ignorado, sem derrubar a linha.</td></tr>
         <tr><td class="fname">proCodigo <span class="fbadge b-req">OBRIGATÓRIO</span></td><td class="ftype">produto_empresa</td><td class="ftype">Texto (30)</td><td class="fdesc">Código interno do produto</td></tr>
         <tr><td class="fname">proUn <span class="fbadge b-req">OBRIGATÓRIO</span> <span class="fbadge b-lkp">LOOKUP</span></td><td class="ftype">produto</td><td class="ftype">Texto (6)</td><td class="fdesc">Unidade — consultada em produtoUn (campo unpUn). Preenche proUnComercialId, proUnTrib e proUnTribId em produto e produto_empresa.</td></tr>
         <tr><td class="fname">ncmCodigoNCM <span class="fbadge b-req">OBRIGATÓRIO</span> <span class="fbadge b-lkp">LOOKUP</span></td><td class="ftype">proNCM</td><td class="ftype">Texto (20)</td><td class="fdesc">Código NCM — deve existir na tabela proNCM. Preenche proNcmId.</td></tr>
@@ -1218,10 +1241,10 @@ log_dir = C:\Max\MaxImporta\Log</code>
 </div>
 
 <div style="margin-top:56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;">
-  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.0.1 — Documentação Técnica · atualizada em 27/07/2026</div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.0.2 — Documentação Técnica · atualizada em 30/07/2026</div>
   <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
   <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
-    <strong>Correções da v4.0.1:</strong> importar base grande (55 mil clientes) não trava mais — o detector de duplicados passou a ser limitado (achados agrupados em resumo, sem explodir a memória) · os botões de ação ficam sempre visíveis em telas menores (1366×768) · o INSERT de Clientes e Produtos ficou ~4× mais rápido (comando único por linha, ganho maior sobre a rede).<br><br><strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
+    <strong>Correções e novidades da v4.0.2:</strong> o UPDATE não apaga mais dados — célula vazia no arquivo passou a significar "não mexer neste campo", em vez de gravar vazio por cima (nos campos de preço chegava a zerar venda e custo) · no UPDATE só a chave é obrigatória (proId / cliId), os demais campos ficaram opcionais · novo campo <code style="font-family:var(--mono);font-size:11px;">proCodCst1</code> (origem da mercadoria, 0 a 9), que completa o CST junto com o proCodCst2 · a área de mapeamento voltou a ocupar a tela — uma barra decorativa do log estava consumindo metade da altura, deixando só 4 linhas visíveis.<br><br><strong>Correções da v4.0.1:</strong> importar base grande (55 mil clientes) não trava mais — o detector de duplicados passou a ser limitado (achados agrupados em resumo, sem explodir a memória) · os botões de ação ficam sempre visíveis em telas menores (1366×768) · o INSERT de Clientes e Produtos ficou ~4× mais rápido (comando único por linha, ganho maior sobre a rede).<br><br><strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
     <br><br>
     <strong>Antes disso:</strong> importação de planilhas <code style="font-family:var(--mono);font-size:11px;">.xlsx</code>, detecção automática de encoding e simulação (dry-run) na v3.7.0 · reconciliação com validação de conteúdo, integridade referencial, backup obrigatório e retry na série 3.6.
     <br><br>

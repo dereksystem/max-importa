@@ -160,7 +160,9 @@ class MigracaoMixin:
         for c in ("proDescricao", "proAplicacao", "proBalanca", "proMedVenda",
                   "proMultiplo", "proPeso", "proQtdComEntrada", "proUn", "proTipo"):
             cols.append(self._c(p, "p", c))
-        for c in ("proAtacado", "proCodCSOSN", "proCodCst2", "proCodigo", "proCusto",
+        # proCodCst1 (origem) anda junto com o proCodCst2 (tributação) — os dois formam
+        # o CST. Migrar só o CST2 deixaria a origem cair no padrão 0 no destino.
+        for c in ("proAtacado", "proCodCSOSN", "proCodCst1", "proCodCst2", "proCodigo", "proCusto",
                   "proDesativaProd", "proEstoqueAtual", "proEstoqueMin",
                   "proLocalizador", "proPrateleira", "proVenda"):
             cols.append(self._c(pe, "pe", c))

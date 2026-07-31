@@ -153,3 +153,51 @@ def test_alerta_nao_quebra_sem_log():
     o = _SemLog()
     o._registrar_alerta("qualquer", "valor")
     assert o._alertas_regras["qualquer"] == 1
+
+
+# ── proCodCst1 (origem da mercadoria, 0–9) ───────────────────────────────────
+# Campo INT em produto_empresa que forma o CST junto com o proCodCst2. Valor fora
+# do intervalo NAO pode ser gravado num campo fiscal: vira alerta e o campo e ignorado.
+import pandas as pd
+
+from mi_importadores import ProdutosImportadorHeadless
+
+
+def _prod(valor, mapeado=True):
+    imp = ProdutosImportadorHeadless()
+    imp.mapping = {"proCodCst1": "CST1"} if mapeado else {}
+    row = pd.Series({"CST1": valor})
+    return imp, row
+
+
+@pytest.mark.parametrize("bruto,esperado", [
+    ("0", 0), ("5", 5), ("9", 9),      # limites e meio do intervalo
+    (0, 0), (9, 9),                    # ja numerico (planilha)
+    ("3.0", 3),                        # Excel devolve float como texto
+    (" 7 ", 7),                        # espacos
+])
+def test_cst1_aceita_digito_0_a_9(bruto, esperado):
+    imp, row = _prod(bruto)
+    assert imp._get_cst1(row) == esperado
+    assert not getattr(imp, "_alertas_regras", {})   # valor bom nao gera alerta
+
+
+@pytest.mark.parametrize("bruto", ["10", "55", "-1", "A", "ABC", "1,5"])
+def test_cst1_fora_do_intervalo_vira_alerta_e_e_ignorado(bruto):
+    imp, row = _prod(bruto)
+    assert imp._get_cst1(row) is None, "valor invalido nao pode ser gravado"
+    assert imp._alertas_regras.get("proCodCst1 fora de 0-9") == 1
+
+
+@pytest.mark.parametrize("bruto", ["", "   ", None, "NULL"])
+def test_cst1_vazio_nao_e_alerta(bruto):
+    """Vazio e ausencia, nao erro — convencao do projeto."""
+    imp, row = _prod(bruto)
+    assert imp._get_cst1(row) is None
+    assert not getattr(imp, "_alertas_regras", {})
+
+
+def test_cst1_nao_mapeado_devolve_none():
+    imp, row = _prod("5", mapeado=False)
+    assert imp._get_cst1(row) is None
+    assert not getattr(imp, "_alertas_regras", {})
