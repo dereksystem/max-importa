@@ -24,6 +24,7 @@ import pandas as pd
 from tkinter import messagebox
 
 from mi_config import APP_VERSION, _get_log_dir
+import mi_multiloja           # empresas (config) e empresaFiltro
 
 
 class MigracaoMixin:
@@ -1192,12 +1193,18 @@ class MigracaoMixin:
             for r in oc.fetchall():
                 ce_por_cli[self._to_int(r[i_ce_cli])] = list(r)
 
-        # 4) empId do destino (para cliente_empresa)
+        # 4) empresas do destino (cliente_empresa recebe UMA linha por cofId)
         try:
-            dc0 = dest_conn.cursor(); dc0.execute("SELECT TOP 1 cofId FROM config")
-            rr = dc0.fetchone(); dest_emp = rr[0] if rr else 1
+            dest_emps = [e["cofId"] for e in
+                         mi_multiloja.listar_empresas(dest_conn.cursor())] or [1]
         except Exception:
-            dest_emp = 1
+            dest_emps = [1]
+        dest_emp = dest_emps[0]
+        # Empresas marcadas no wizard = onde os clientes vão APARECER (empresaFiltro).
+        _sel = (self._opcoes or {}).get("empresas") or dest_emps
+        if len(dest_emps) > 1:
+            self._log(f"🏬 Destino multi-loja: cliente_empresa em {dest_emps} | "
+                      f"visível em {_sel}")
 
         # 5) Desabilita as FKs que REFERENCIAM cliente/cliente_empresa (p/ limpar) E
         #    as DEFINIDAS NELAS (de saída) — necessário porque a cópia completa traz
@@ -1288,50 +1295,84 @@ class MigracaoMixin:
                 marks_ce   = ", ".join("?" for _ in ce_cols)
                 self._log(f"── {rot}: inserindo cliente_empresa (todas as {len(ce_cols)} colunas)...")
                 dc.execute("SET IDENTITY_INSERT cliente_empresa ON")
+                # O cleId é PK com IDENTITY_INSERT ON: as linhas das empresas EXTRAS
+                # precisam de ids novos, então o máximo é calculado ANTES do laço.
                 max_cle = 0
-                # 7a) vínculos existentes na origem (cópia completa)
-                for cid, ce in ce_por_cli.items():
-                    vals = list(ce)
-                    if i_ce_emp is not None:
-                        vals[i_ce_emp] = dest_emp
-                    if i_ce_cle is not None:
+                if i_ce_cle is not None:
+                    for ce in ce_por_cli.values():
                         cle = self._to_int(ce[i_ce_cle])
                         if cle is not None:
                             max_cle = max(max_cle, cle)
-                    try:
-                        dc.execute(f"INSERT INTO cliente_empresa ({collist_ce}) VALUES ({marks_ce})", vals)
-                        ce_ins += 1
-                        if ce_ins % 500 == 0:
-                            dest_conn.commit()
-                    except Exception as e:
-                        erros += 1
-                        if erros <= 8:
-                            self._log(f"❌ {rot}: erro cliente_empresa cliId={cid}: {str(e)[:150]}")
-                # 7b) clientes sem vínculo na origem → linha mínima (mantém o vínculo)
                 prox_cle = max_cle
+
+                # 7a) vínculos existentes na origem (cópia completa) — 1 linha por empresa
+                for cid, ce in ce_por_cli.items():
+                    for k, _emp in enumerate(dest_emps):
+                        vals = list(ce)
+                        if i_ce_emp is not None:
+                            vals[i_ce_emp] = _emp
+                        if k > 0 and i_ce_cle is not None:
+                            prox_cle += 1
+                            vals[i_ce_cle] = prox_cle
+                        try:
+                            dc.execute(f"INSERT INTO cliente_empresa ({collist_ce}) VALUES ({marks_ce})", vals)
+                            ce_ins += 1
+                            if ce_ins % 500 == 0:
+                                dest_conn.commit()
+                        except Exception as e:
+                            erros += 1
+                            if erros <= 8:
+                                self._log(f"❌ {rot}: erro cliente_empresa cliId={cid} "
+                                          f"empId={_emp}: {str(e)[:150]}")
+                # 7b) clientes sem vínculo na origem → linha mínima (mantém o vínculo)
                 oc2 = orig_conn.cursor()
                 oc2.execute("SELECT cliId, cliDatCad FROM cliente")
                 for cid_r, datcad in oc2.fetchall():
                     cid = self._to_int(cid_r)
                     if cid is None or cid in ce_por_cli:
                         continue
-                    prox_cle += 1
-                    minimo = {"cleid": prox_cle, "empid": dest_emp, "cliid": cid,
-                              "clidatcad": datcad, "clicalculaicmssubst": 0,
-                              "clidescontoautoaplicar": 0, "clidescontoautoaliq": _zero,
-                              "climaxdatarateiocredito_aliq_01": _zero,
-                              "climaxdatarateiocredito_aliq_02": _zero,
-                              "climaxdatarateiocredito_aliq_03": _zero}
-                    vals = [minimo.get(c.lower(), None) for c in ce_cols]
-                    try:
-                        dc.execute(f"INSERT INTO cliente_empresa ({collist_ce}) VALUES ({marks_ce})", vals)
-                        ce_ins += 1
-                    except Exception as e:
-                        erros += 1
-                        if erros <= 8:
-                            self._log(f"❌ {rot}: erro cliente_empresa (mínimo) cliId={cid}: {str(e)[:150]}")
+                    for _emp in dest_emps:
+                        prox_cle += 1
+                        minimo = {"cleid": prox_cle, "empid": _emp, "cliid": cid,
+                                  "clidatcad": datcad, "clicalculaicmssubst": 0,
+                                  "clidescontoautoaplicar": 0, "clidescontoautoaliq": _zero,
+                                  "climaxdatarateiocredito_aliq_01": _zero,
+                                  "climaxdatarateiocredito_aliq_02": _zero,
+                                  "climaxdatarateiocredito_aliq_03": _zero}
+                        vals = [minimo.get(c.lower(), None) for c in ce_cols]
+                        try:
+                            dc.execute(f"INSERT INTO cliente_empresa ({collist_ce}) VALUES ({marks_ce})", vals)
+                            ce_ins += 1
+                        except Exception as e:
+                            erros += 1
+                            if erros <= 8:
+                                self._log(f"❌ {rot}: erro cliente_empresa (mínimo) "
+                                          f"cliId={cid} empId={_emp}: {str(e)[:150]}")
                 dc.execute("SET IDENTITY_INSERT cliente_empresa OFF")
                 dest_conn.commit()
+
+                # Visibilidade por loja: só as empresas marcadas no wizard. Em destino
+                # de UMA empresa não grava nada (empresaFiltro fica como sempre foi).
+                if len(dest_emps) > 1:
+                    _tab, _pk = mi_multiloja.TABELA_POR_MODULO["CLIENTES"]
+                    _n = 0
+                    oc3 = orig_conn.cursor()
+                    oc3.execute("SELECT cliId FROM cliente")
+                    for (cid_r,) in oc3.fetchall():
+                        cid = self._to_int(cid_r)
+                        if cid is None:
+                            continue
+                        try:
+                            mi_multiloja.registrar_filtro(dc, _sel, _tab, _pk, cid)
+                            _n += 1
+                            if _n % 500 == 0:
+                                dest_conn.commit()
+                        except Exception as e:
+                            erros += 1
+                            if erros <= 8:
+                                self._log(f"❌ {rot}: erro empresaFiltro cliId={cid}: {str(e)[:150]}")
+                    dest_conn.commit()
+                    self._log(f"🏬 {rot}: {_n} cliente(s) vinculados às empresas {_sel}.")
 
             # finaliza: ajusta o seed dos identities para o MAX real
             try:

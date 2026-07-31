@@ -300,7 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="sidebar-logo">
     <div class="app-name">Max_Importa</div>
     <div class="app-sub">DOCUMENTAÇÃO TÉCNICA</div>
-    <div class="version">v4.0.2 — 2026</div>
+    <div class="version">v4.1.0 — 2026</div>
   </div>
 
   <div class="nav-section">Visão Geral</div>
@@ -367,7 +367,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-tag">Documentação Técnica — v4.0.2</div>
+  <div class="hero-tag">Documentação Técnica — v4.1.0</div>
   <h1>Max_<span>Importa</span></h1>
   <p>Importador de dados para o sistema MaxManager. Centraliza a importação de Produtos, Clientes/Fornecedores e lançamentos Financeiros via arquivos CSV ou TXT, e a <strong>Migração entre Bancos MaxData</strong> (banco → banco, na mesma instância SQL), com interface visual MaxData, mapeamento automático de colunas e rastreabilidade completa por logs.</p>
   <div class="hero-chips">
@@ -444,14 +444,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 <div class="section-anchor" id="instalacao"></div>
 <div class="section-label">03 — Instalação</div>
 <h2 class="section-title">Instalação pelo Instalador</h2>
-<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.2.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
+<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.1.0.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
 
 <div class="steps">
   <div class="step">
     <div class="step-num">1</div>
     <div class="step-body">
       <div class="step-title">Executar como Administrador</div>
-      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.0.2.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
+      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.1.0.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
     </div>
   </div>
   <div class="step">
@@ -677,6 +677,31 @@ log_dir = C:\Max\MaxImporta\Log</code>
   <strong>FALTA</strong> e o contador passa a considerar apenas a chave.</div>
 </div>
 
+<div class="callout callout-tip" style="margin-top:20px;">
+  <div class="callout-icon">🏬</div>
+  <div class="callout-body"><strong>Banco com mais de uma loja (v4.1.0):</strong> se a tabela
+  <code style="font-family:var(--mono);font-size:11px;">config</code> tiver mais de uma empresa, o
+  sistema abre uma janela perguntando <strong>em quais lojas</strong> a importação vale — antes de
+  começar. Em banco de uma loja nada é perguntado e o comportamento é o de sempre.<br><br>
+  A marcação quer dizer <strong>coisas diferentes</strong> conforme a operação, e a própria janela
+  avisa qual: no <strong>INSERT</strong> ela define onde o registro vai <strong>aparecer</strong> —
+  os dados são gravados em <strong>todas</strong> as empresas (uma linha por loja) e a marcação vira
+  a visibilidade; no <strong>UPDATE</strong> ela define em quais lojas os <strong>dados</strong>
+  mudam, e a visibilidade já configurada <strong>não é alterada</strong> (ela pode ter sido ajustada
+  no Manager).</div>
+</div>
+
+<div class="callout callout-info" style="margin-top:16px;">
+  <div class="callout-icon">💰</div>
+  <div class="callout-body"><strong>Financeiro em multi-loja:</strong> cada título pertence a
+  <strong>uma</strong> loja, então ele não é replicado. Use o campo novo
+  <code style="font-family:var(--mono);font-size:11px;">empId</code> no arquivo para dizer a loja de
+  cada linha — é <strong>opcional</strong>, e sem ele o título vai para a <strong>empresa 1</strong>.
+  Se o banco tiver várias lojas e o campo não estiver mapeado, o sistema avisa antes de gravar. Um
+  <code style="font-family:var(--mono);font-size:11px;">empId</code> que não existe no cadastro de
+  empresas <strong>não é gravado</strong>: a linha é pulada e aparece no arquivo de erros.</div>
+</div>
+
 <div class="ui-block">
   <div class="ui-block-header">🏷 Badge de Operação</div>
   <div class="ui-block-body">
@@ -880,6 +905,7 @@ log_dir = C:\Max\MaxImporta\Log</code>
         <tr><td class="fname">pgtObs <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto</td><td class="fdesc">Observação do lançamento</td></tr>
         <tr><td class="fname">pgtDataQuitou <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Data/Hora</td><td class="fdesc">Data de quitação — preenchida quando pgtPago = C</td></tr>
         <tr><td class="fname">pgtNossoNumero <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Texto</td><td class="fdesc">Nosso número (boleto)</td></tr>
+        <tr><td class="fname">empId <span class="fbadge b-opt">OPCIONAL</span></td><td class="ftype">vendaPgto</td><td class="ftype">Inteiro</td><td class="fdesc"><strong>Loja (empresa) do título</strong> — o <code style="font-family:var(--mono);font-size:11px;">cofId</code> da tabela <code style="font-family:var(--mono);font-size:11px;">config</code>. Vazio ou ausente → <strong>empresa 1</strong>. Valor que não existe no cadastro de empresas faz a linha ser <strong>pulada</strong> (vai para o arquivo de erros), para não criar título órfão numa loja inexistente.</td></tr>
       </tbody>
     </table>
   </div>
@@ -1241,10 +1267,10 @@ log_dir = C:\Max\MaxImporta\Log</code>
 </div>
 
 <div style="margin-top:56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;">
-  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.0.2 — Documentação Técnica · atualizada em 30/07/2026</div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.1.0 — Documentação Técnica · atualizada em 31/07/2026</div>
   <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
   <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
-    <strong>Correções e novidades da v4.0.2:</strong> o UPDATE não apaga mais dados — célula vazia no arquivo passou a significar "não mexer neste campo", em vez de gravar vazio por cima (nos campos de preço chegava a zerar venda e custo) · no UPDATE só a chave é obrigatória (proId / cliId), os demais campos ficaram opcionais · novo campo <code style="font-family:var(--mono);font-size:11px;">proCodCst1</code> (origem da mercadoria, 0 a 9), que completa o CST junto com o proCodCst2 · a área de mapeamento voltou a ocupar a tela — uma barra decorativa do log estava consumindo metade da altura, deixando só 4 linhas visíveis.<br><br><strong>Correções da v4.0.1:</strong> importar base grande (55 mil clientes) não trava mais — o detector de duplicados passou a ser limitado (achados agrupados em resumo, sem explodir a memória) · os botões de ação ficam sempre visíveis em telas menores (1366×768) · o INSERT de Clientes e Produtos ficou ~4× mais rápido (comando único por linha, ganho maior sobre a rede).<br><br><strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
+    <strong>Novidades da v4.1.0:</strong> suporte a banco com <strong>mais de uma loja</strong> — nova janela para escolher em quais empresas a importação vale, os cadastros passam a nascer em todas as lojas com a visibilidade definida pela marcação, o Financeiro ganhou o campo <code style="font-family:var(--mono);font-size:11px;">empId</code> para indicar a loja de cada título, e a migração pergunta as empresas no assistente.<br><br><strong>Correções e novidades da v4.0.2:</strong> o UPDATE não apaga mais dados — célula vazia no arquivo passou a significar "não mexer neste campo", em vez de gravar vazio por cima (nos campos de preço chegava a zerar venda e custo) · no UPDATE só a chave é obrigatória (proId / cliId), os demais campos ficaram opcionais · novo campo <code style="font-family:var(--mono);font-size:11px;">proCodCst1</code> (origem da mercadoria, 0 a 9), que completa o CST junto com o proCodCst2 · a área de mapeamento voltou a ocupar a tela — uma barra decorativa do log estava consumindo metade da altura, deixando só 4 linhas visíveis.<br><br><strong>Correções da v4.0.1:</strong> importar base grande (55 mil clientes) não trava mais — o detector de duplicados passou a ser limitado (achados agrupados em resumo, sem explodir a memória) · os botões de ação ficam sempre visíveis em telas menores (1366×768) · o INSERT de Clientes e Produtos ficou ~4× mais rápido (comando único por linha, ganho maior sobre a rede).<br><br><strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
     <br><br>
     <strong>Antes disso:</strong> importação de planilhas <code style="font-family:var(--mono);font-size:11px;">.xlsx</code>, detecção automática de encoding e simulação (dry-run) na v3.7.0 · reconciliação com validação de conteúdo, integridade referencial, backup obrigatório e retry na série 3.6.
     <br><br>

@@ -61,10 +61,30 @@ a regra de visibilidade vive dentro do MaxManager. A leitura mais coerente é *l
 restrição* (sem linha = aparece em todas). Gravar uma linha por empresa marcada funciona
 **nas duas leituras**, então a dúvida não muda o resultado.
 
+### 🐛 Migração de Clientes ignorava as outras lojas
+A migração de Clientes **não passa pelo importador** — é a cópia "banco zero" (desabilita
+as FKs, limpa e recopia). Ela resolvia o destino com o mesmo `SELECT TOP 1 cofId`, então
+num destino de 3 lojas cada cliente ficava com **uma** linha de `cliente_empresa`, na
+primeira empresa. Agora cria uma por `cofId` — com `cleId` novo para as extras, já que a
+PK vai com `IDENTITY_INSERT` ligado — e grava o `empresaFiltro` das marcadas no wizard.
+
+### 🐛 Os botões da janela de seleção sumiam com poucas empresas
+Pego em uso real: a janela abria com a lista de lojas e **sem** Continuar/Cancelar. O
+corpo rolável era empacotado com `expand=True` **antes** do rodapé, então consumia todo o
+espaço livre. Medido: com 2 e 3 empresas o frame dos botões ficava com **1 px** de altura
+(pedia 43); com 5 sobrava altura e o problema não aparecia. A altura da janela também
+vinha de uma fórmula que subestimava o conteúdo.
+- Mesma regra do `_montar_rodape`: rodapé com `side="bottom"` empacotado **antes** do
+  corpo. A altura passou a vir do `winfo_reqheight` do próprio Tk, com teto de 80% da tela.
+- ⚠️ **O teste anterior não pegava isso** — ele achava os botões na árvore de widgets e
+  chamava `.invoke()`, que funciona num widget de 1 px. Agora há um teste que mede
+  `winfo_ismapped`, altura e posição dentro da janela, em 2/3/5/12 empresas; confirmado
+  contra o código antigo, os casos de 2 e 3 falham.
+
 - 26 testes de unidade + 7 de integração contra banco real, incluindo: 3 linhas criadas
   com filtro só nas marcadas, reimportação sem duplicar, UPDATE que altera só as
   marcadas e preserva o filtro, `empId` do arquivo no Financeiro (com inexistente
-  pulado) e a regressão de banco de uma loja. Design em
+  pulado), a migração de Clientes criando o vínculo nas 3 empresas com `cleId` único, a janela renderizada de verdade (com os botões VISÍVEIS) e a regressão de banco de uma loja. Design em
   `docs/superpowers/specs/2026-07-31-multiloja-design.md`.
 
 ---

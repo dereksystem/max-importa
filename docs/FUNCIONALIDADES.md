@@ -32,6 +32,10 @@ uma empresa e vira o `empId` de `produto_empresa`, `cliente_empresa` e `vendaPgt
   campo **`empId`** é opcional no arquivo; vazio ou ausente → empresa **1**. `empId` fora
   da `config` **não é gravado** — a linha é pulada e entra no arquivo de erros.
 - **Migração Max→Max:** a seleção é um passo do wizard, coletada antes de começar.
+  A migração de **Clientes** é cópia "banco zero" e **não** passa pelo importador —
+  ela cria as N linhas de `cliente_empresa` por conta própria, com `cleId` novo para
+  as empresas extras (a PK vai com `IDENTITY_INSERT` ligado), e grava o
+  `empresaFiltro` das marcadas.
 - Desempenho: os N blocos por empresa vão **no mesmo comando**, então continua **1
   round-trip por registro**.
 

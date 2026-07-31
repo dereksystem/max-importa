@@ -16,6 +16,7 @@ Mapa da aplicação (v3.6.2). Desde a refatoração, o monólito foi dividido em
 | `mi_migracao.py` | **`MigracaoMixin`** — lógica da migração banco→banco (`_migrar`, `_migrar_entidade`, `_migrar_clientes/permissoes/codbarras`, `_sql_*`, `_reconciliar`, `_salvar_relatorio_migracao`, `_registrar_auditoria`, `_backup_destino`, …) | não |
 | `mi_importadores.py` | **`ProdutosImportMixin`/`ClientesImportMixin`/`FinanceiroImportMixin`** (lógica de `_inserir_*`/`_atualizar_*`, `_calc_cli_tipo`, `_get_cst1`) + **importadores HEADLESS** usados pela migração (`ProdutosImportadorHeadless`, …) | não |
 | `mi_multiloja.py` | empresas do banco (`listar_empresas`, `e_multiloja`) e visibilidade por loja (`registrar_filtro` → `empresaFiltro`); constantes `USU_ID_PADRAO` e `EMP_ID_PADRAO_FINANCEIRO` | não |
+| `mi_multiloja.py` | empresas do banco (`listar_empresas`, `e_multiloja`) e visibilidade por loja (`registrar_filtro` → `empresaFiltro`, com `IF NOT EXISTS`). Só depende de um cursor | não |
 | `mi_validacao.py` | regras de validação **puras** dos `_iniciar`: `campos_nao_mapeados`, `validar_obrigatorios`, `linhas_ao_menos_um`, `ids_reservados` | não |
 
 As janelas importadoras herdam os mixins:

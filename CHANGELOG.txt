@@ -1079,6 +1079,32 @@ UPDATE: so a CHAVE e obrigatoria
   celulas vazias, que e justamente o que nao deve ser gravado
   por cima do cadastro.
 
+BUG: migracao de Clientes ignorava as outras lojas
+- A migracao de Clientes NAO passa pelo importador (e a copia
+  "banco zero"). Ela resolvia o destino com o mesmo SELECT TOP 1
+  cofId, entao num destino de 3 lojas cada cliente ficava com
+  UMA linha de cliente_empresa, na primeira empresa. Agora cria
+  uma por cofId - com cleId novo para as extras, ja que a PK vai
+  com IDENTITY_INSERT ligado - e grava o empresaFiltro das
+  empresas marcadas no wizard.
+
+BUG: botoes da janela de selecao sumiam com poucas empresas
+- Pego em uso real: a janela abria com a lista de lojas e SEM os
+  botoes Continuar/Cancelar. O corpo rolavel era empacotado com
+  expand=True ANTES do rodape, entao consumia todo o espaco.
+  Medido: com 2 e 3 empresas o frame dos botoes ficava com 1px
+  de altura (pedia 43); com 5 sobrava altura e o problema nao
+  aparecia. A altura da janela tambem vinha de uma formula que
+  subestimava o conteudo.
+- Correcao (mesma regra do _montar_rodape): rodape com
+  side="bottom" empacotado ANTES do corpo, e a altura vindo do
+  winfo_reqheight do proprio Tk, com teto de 80% da tela.
+- ATENCAO: o teste anterior NAO pegava isso - achava os botoes na
+  arvore de widgets e chamava .invoke(), que funciona num widget
+  de 1px. Agora ha teste medindo winfo_ismapped, altura e posicao
+  dentro da janela, em 2/3/5/12 empresas. Confirmado contra o
+  codigo antigo: os casos de 2 e 3 empresas falham.
+
 --------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------

@@ -961,3 +961,42 @@ def test_multiloja_financeiro_sem_campo_empid_usa_o_padrao(db_multiloja):
     emp = conn.cursor().execute(
         "SELECT empId FROM vendaPgto WHERE pgtClienteId = ?", cli_id).fetchone()[0]
     assert emp == 1
+
+
+def test_multiloja_migracao_clientes_cria_vinculo_em_todas_as_empresas(orig_conn, db_multiloja):
+    """A migração de Clientes NÃO passa pelo importador (é cópia 'banco zero').
+
+    Antes, ela resolvia o destino com `SELECT TOP 1 cofId` e criava UMA linha de
+    cliente_empresa — num destino de 3 lojas, o cliente existia só na primeira.
+    """
+    conn, emps = db_multiloja
+    assert emps == [1, 2, 3]
+    mig = _harness_migracao(SRC_DB)
+    mig._opcoes = {"cli_ciente": True, "cli_duplicados": "manter", "empresas": [1, 3]}
+    src_emp = (orig_conn.cursor().execute(
+        "SELECT TOP 1 cofId FROM config").fetchone() or [1])[0]
+    res = mig._migrar_clientes(orig_conn, conn, src_emp)
+    assert res["erros"] == 0, mig._logs[-10:]
+
+    cur = conn.cursor()
+    n_cli = cur.execute("SELECT COUNT(*) FROM cliente").fetchone()[0]
+    assert n_cli > 0, "a migração não copiou cliente nenhum"
+
+    # 1 linha de cliente_empresa por cliente POR EMPRESA
+    por_emp = {r[0]: r[1] for r in cur.execute(
+        "SELECT empId, COUNT(DISTINCT cliId) FROM cliente_empresa GROUP BY empId")}
+    assert sorted(por_emp) == [1, 2, 3], f"faltou empresa em cliente_empresa: {por_emp}"
+    assert set(por_emp.values()) == {n_cli}, \
+        f"cada empresa devia ter os {n_cli} clientes, veio {por_emp}"
+
+    # cleId continua unico (a PK e IDENTITY_INSERT ON durante a copia)
+    total, distintos = cur.execute(
+        "SELECT COUNT(*), COUNT(DISTINCT cleId) FROM cliente_empresa").fetchone()
+    assert total == distintos == n_cli * 3, f"cleId duplicado: {total} linhas, {distintos} ids"
+
+    # visibilidade so nas marcadas no wizard
+    filtro = {r[0]: r[1] for r in cur.execute(
+        "SELECT empId, COUNT(*) FROM empresaFiltro WHERE emfTable = 'cliente' "
+        "GROUP BY empId")}
+    assert sorted(filtro) == [1, 3], f"empresaFiltro nas empresas erradas: {filtro}"
+    assert set(filtro.values()) == {n_cli}
