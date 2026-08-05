@@ -484,6 +484,41 @@ class MapeamentoDBMixin:
         row = cursor.fetchone()
         return row[0] if row else 1
 
+    def _linhas_afetadas(self, cursor):
+        """Linhas afetadas pelo último comando, ou None quando não dá para confiar.
+
+        `None` significa "não sei" e o chamador NÃO deve concluir que o registro
+        sumiu. Dois casos:
+          - **dry-run**: o `_CursorSimulado` descarta a escrita, então o `rowcount`
+            que sobra é o do último SELECT real — leitura enganosa;
+          - driver/cursor que não expõe `rowcount` (devolve −1 ou nem tem o atributo).
+        """
+        if getattr(self, "_dry_run", False):
+            return None
+        n = getattr(cursor, "rowcount", -1)
+        try:
+            n = int(n)
+        except Exception:
+            return None
+        return None if n < 0 else n
+
+    def _registrar_nao_atualizado(self, row, idx, motivo):
+        """Guarda uma linha que NÃO foi atualizada, com o motivo.
+
+        Vai para o mesmo arquivo de erros que o resto da importação, porque o efeito
+        para quem importou é o mesmo: aquela linha não entrou. Sem isso, um arquivo com
+        IDs errados ou documentos repetidos terminava com "tudo certo" no resumo."""
+        lista = getattr(self, "_nao_atualizados", None)
+        if lista is None:
+            lista = self._nao_atualizados = []
+        try:
+            linha = {c: row.get(col, "") for c, col in (self.mapping or {}).items()}
+        except Exception:
+            linha = {}
+        linha["_linha"]  = idx + 2
+        linha["_motivo"] = motivo
+        lista.append(linha)
+
     def _resolver_empresas(self, cursor):
         """Devolve `(todas, marcadas)` para a gravação multi-loja.
 

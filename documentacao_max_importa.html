@@ -300,7 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
   <div class="sidebar-logo">
     <div class="app-name">Max_Importa</div>
     <div class="app-sub">DOCUMENTAÇÃO TÉCNICA</div>
-    <div class="version">v4.1.0 — 2026</div>
+    <div class="version">v4.1.1 — 2026</div>
   </div>
 
   <div class="nav-section">Visão Geral</div>
@@ -367,7 +367,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 
 <!-- HERO -->
 <div class="hero">
-  <div class="hero-tag">Documentação Técnica — v4.1.0</div>
+  <div class="hero-tag">Documentação Técnica — v4.1.1</div>
   <h1>Max_<span>Importa</span></h1>
   <p>Importador de dados para o sistema MaxManager. Centraliza a importação de Produtos, Clientes/Fornecedores e lançamentos Financeiros via arquivos CSV ou TXT, e a <strong>Migração entre Bancos MaxData</strong> (banco → banco, na mesma instância SQL), com interface visual MaxData, mapeamento automático de colunas e rastreabilidade completa por logs.</p>
   <div class="hero-chips">
@@ -444,14 +444,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15
 <div class="section-anchor" id="instalacao"></div>
 <div class="section-label">03 — Instalação</div>
 <h2 class="section-title">Instalação pelo Instalador</h2>
-<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.1.0.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
+<p class="section-desc">O Max_Importa é distribuído como um <strong>instalador único</strong> — <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.1.1.exe</code> — que já traz o programa, a documentação, os modelos de importação, o banco ZERO e os <strong>pré-requisitos</strong>. Não é preciso instalar Python nem compilar nada.</p>
 
 <div class="steps">
   <div class="step">
     <div class="step-num">1</div>
     <div class="step-body">
       <div class="step-title">Executar como Administrador</div>
-      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.1.0.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
+      <div class="step-text">Clique com o botão direito em <code style="font-family:var(--mono);font-size:12px;">MaxImporta_Setup_4.1.1.exe</code> → <strong>Executar como administrador</strong>. A elevação é necessária porque o instalador pode precisar instalar o driver ODBC e o Visual C++ no sistema.</div>
     </div>
   </div>
   <div class="step">
@@ -700,6 +700,28 @@ log_dir = C:\Max\MaxImporta\Log</code>
   Se o banco tiver várias lojas e o campo não estiver mapeado, o sistema avisa antes de gravar. Um
   <code style="font-family:var(--mono);font-size:11px;">empId</code> que não existe no cadastro de
   empresas <strong>não é gravado</strong>: a linha é pulada e aparece no arquivo de erros.</div>
+</div>
+
+<div class="callout callout-tip" style="margin-top:20px;">
+  <div class="callout-icon">🛑</div>
+  <div class="callout-body"><strong>CPF/CNPJ repetido não é atualizado (v4.1.1):</strong> no
+  UPDATE por documento, se o CPF/CNPJ do arquivo aparecer em <strong>mais de um</strong>
+  cliente, a linha é <strong>pulada</strong> — nenhum cadastro é alterado. Antes, o sistema
+  escolhia um deles ao acaso e gravava por cima, sobrescrevendo o cliente errado. Documento
+  repetido é comum: há bases com o mesmo CNPJ em 19 clientes. Para atualizar mesmo assim,
+  resolva a duplicidade no Manager ou use o <code style="font-family:var(--mono);font-size:11px;">cliId</code>
+  como chave.</div>
+</div>
+
+<div class="callout callout-info" style="margin-top:16px;">
+  <div class="callout-icon">🧾</div>
+  <div class="callout-body"><strong>O que não foi atualizado agora tem arquivo (v4.1.1):</strong>
+  linhas cujo <code style="font-family:var(--mono);font-size:11px;">proId</code>/<code style="font-family:var(--mono);font-size:11px;">cliId</code>
+  não existe no banco, ou com documento ambíguo, saem em
+  <code style="font-family:var(--mono);font-size:11px;">NAO_ATUALIZADOS_&lt;MÓDULO&gt;_&lt;data&gt;.csv</code>
+  com o motivo. O resumo passou a ter um contador <strong>"não encontrados"</strong> próprio:
+  antes, uma chave inexistente contava como "atualizado" e um arquivo inteiro com IDs errados
+  terminava dizendo que tudo tinha entrado.</div>
 </div>
 
 <div class="ui-block">
@@ -1267,10 +1289,10 @@ log_dir = C:\Max\MaxImporta\Log</code>
 </div>
 
 <div style="margin-top:56px;padding:24px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center;">
-  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.1.0 — Documentação Técnica · atualizada em 31/07/2026</div>
+  <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">Max_Importa v4.1.1 — Documentação Técnica · atualizada em 31/07/2026</div>
   <div style="font-size:13px;color:var(--muted2);">Desenvolvido para MaxManager ERP · por: Derek Quadros · Sistema de Importação de Dados · 2026</div>
   <div style="font-size:12px;color:var(--muted);margin-top:14px;text-align:left;max-width:760px;margin-left:auto;margin-right:auto;line-height:1.7;">
-    <strong>Novidades da v4.1.0:</strong> suporte a banco com <strong>mais de uma loja</strong> — nova janela para escolher em quais empresas a importação vale, os cadastros passam a nascer em todas as lojas com a visibilidade definida pela marcação, o Financeiro ganhou o campo <code style="font-family:var(--mono);font-size:11px;">empId</code> para indicar a loja de cada título, e a migração pergunta as empresas no assistente.<br><br><strong>Correções e novidades da v4.0.2:</strong> o UPDATE não apaga mais dados — célula vazia no arquivo passou a significar "não mexer neste campo", em vez de gravar vazio por cima (nos campos de preço chegava a zerar venda e custo) · no UPDATE só a chave é obrigatória (proId / cliId), os demais campos ficaram opcionais · novo campo <code style="font-family:var(--mono);font-size:11px;">proCodCst1</code> (origem da mercadoria, 0 a 9), que completa o CST junto com o proCodCst2 · a área de mapeamento voltou a ocupar a tela — uma barra decorativa do log estava consumindo metade da altura, deixando só 4 linhas visíveis.<br><br><strong>Correções da v4.0.1:</strong> importar base grande (55 mil clientes) não trava mais — o detector de duplicados passou a ser limitado (achados agrupados em resumo, sem explodir a memória) · os botões de ação ficam sempre visíveis em telas menores (1366×768) · o INSERT de Clientes e Produtos ficou ~4× mais rápido (comando único por linha, ganho maior sobre a rede).<br><br><strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
+    <strong>Correções da v4.1.1:</strong> o UPDATE por CPF/CNPJ não sobrescreve mais o cadastro errado quando o documento está repetido no banco — a linha é pulada e reportada · o resumo parou de contar como "atualizado" a linha cujo ID não existe, e essas linhas saem num arquivo próprio com o motivo.<br><br><strong>Novidades da v4.1.0:</strong> suporte a banco com <strong>mais de uma loja</strong> — nova janela para escolher em quais empresas a importação vale, os cadastros passam a nascer em todas as lojas com a visibilidade definida pela marcação, o Financeiro ganhou o campo <code style="font-family:var(--mono);font-size:11px;">empId</code> para indicar a loja de cada título, e a migração pergunta as empresas no assistente.<br><br><strong>Correções e novidades da v4.0.2:</strong> o UPDATE não apaga mais dados — célula vazia no arquivo passou a significar "não mexer neste campo", em vez de gravar vazio por cima (nos campos de preço chegava a zerar venda e custo) · no UPDATE só a chave é obrigatória (proId / cliId), os demais campos ficaram opcionais · novo campo <code style="font-family:var(--mono);font-size:11px;">proCodCst1</code> (origem da mercadoria, 0 a 9), que completa o CST junto com o proCodCst2 · a área de mapeamento voltou a ocupar a tela — uma barra decorativa do log estava consumindo metade da altura, deixando só 4 linhas visíveis.<br><br><strong>Correções da v4.0.1:</strong> importar base grande (55 mil clientes) não trava mais — o detector de duplicados passou a ser limitado (achados agrupados em resumo, sem explodir a memória) · os botões de ação ficam sempre visíveis em telas menores (1366×768) · o INSERT de Clientes e Produtos ficou ~4× mais rápido (comando único por linha, ganho maior sobre a rede).<br><br><strong>Novidades da v4.0.0:</strong> pré-flight de compatibilidade de schema antes de migrar (com truncamento medido, não estimado) · validação de CPF/CNPJ, e-mail, faixas de data e valores no momento da importação · relatório HTML de fechamento com a seção de qualidade dos dados · perfis de mapeamento salvos por layout de arquivo · correção do <code style="font-family:var(--mono);font-size:11px;">pgtPago</code> (o MaxManager espera S = Concluído / N = Aberto).
     <br><br>
     <strong>Antes disso:</strong> importação de planilhas <code style="font-family:var(--mono);font-size:11px;">.xlsx</code>, detecção automática de encoding e simulação (dry-run) na v3.7.0 · reconciliação com validação de conteúdo, integridade referencial, backup obrigatório e retry na série 3.6.
     <br><br>

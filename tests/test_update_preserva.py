@@ -196,3 +196,137 @@ def test_insert_exige_todos_os_obrigatorios():
 
 def test_update_exige_apenas_a_chave():
     assert _Tela("ATUALIZAR (UPDATE)")._obrigatorios_efetivos() == {"proId"}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# UPDATE por CPF/CNPJ: documento AMBIGUO nao pode sobrescrever ninguem
+# ══════════════════════════════════════════════════════════════════════════
+# Medido nas bases reais: MAX_CENTRAL tem um CNPJ com 19 clientes, o BD_ZERO um
+# CPF com 15 e sete clientes com o placeholder 00000000000. Um "SELECT TOP 1"
+# sem ORDER BY escolhia um deles de forma nao deterministica e gravava por cima.
+
+
+class _CursorCli(_Cursor):
+    """Cursor que responde ao lookup por documento com N clientes."""
+    def __init__(self, ids_por_doc):
+        super().__init__()
+        self._ids = ids_por_doc
+        self._ult = []
+
+    def execute(self, sql, *params):
+        super().execute(sql, *params)
+        if "FROM cliente WHERE cliCpfCgc" in sql:
+            doc = (params[0][0] if params else None)
+            self._ult = [(i,) for i in self._ids.get(doc, [])]
+        else:
+            self._ult = []
+        return self
+
+    def fetchone(self):
+        return self._ult[0] if self._ult else None
+
+    def fetchall(self):
+        return list(self._ult)
+
+
+def _por_cpf(ids_por_doc, linha):
+    cur = _CursorCli(ids_por_doc)
+    imp = ClientesImportadorHeadless()
+    imp.conn = _Conn(cur)
+    imp.mapping = {"cliCpfCgc": "DOC", "cliNome": "NOME"}
+    imp.df = pd.DataFrame([linha])
+    imp.logs = []                       # o headless nasce com _log mudo
+    imp._log = imp.logs.append
+    return imp, cur
+
+
+def test_update_por_cpf_documento_unico_atualiza():
+    imp, cur = _por_cpf({"12345678901": [77]}, {"DOC": "12345678901", "NOME": "NOVO NOME"})
+    imp._atualizar_clientes_por_cpf()
+    assert "cliNome" in cur.sets_de("cliente"), "documento único deve atualizar"
+
+
+def test_update_por_cpf_documento_ambiguo_NAO_grava():
+    """19 clientes no mesmo CNPJ: nao da para saber qual — nao pode gravar em nenhum."""
+    imp, cur = _por_cpf({"27840027000491": list(range(100, 119))},
+                        {"DOC": "27840027000491", "NOME": "NOVO NOME"})
+    imp._atualizar_clientes_por_cpf()
+    assert cur.sets_de("cliente") == [], "documento ambiguo NAO pode sobrescrever ninguem"
+    assert cur.sets_de("cliente_empresa") == []
+
+
+def test_update_por_cpf_ambiguo_e_reportado():
+    imp, cur = _por_cpf({"00000000000": [1, 2, 3, 4, 5, 6, 7]},
+                        {"DOC": "00000000000", "NOME": "X"})
+    imp._atualizar_clientes_por_cpf()
+    txt = " ".join(imp.logs)
+    assert "ambíguo" in txt.lower() or "ambiguo" in txt.lower(), \
+        f"o motivo tem de aparecer no log: {txt[:200]}"
+    assert "7" in txt, "quantos clientes casaram precisa estar no aviso"
+
+
+def test_update_por_cpf_lookup_e_deterministico():
+    """A consulta precisa de ORDER BY: sem ele o SQL Server nao garante a ordem."""
+    imp, cur = _por_cpf({"12345678901": [77]}, {"DOC": "12345678901", "NOME": "N"})
+    imp._atualizar_clientes_por_cpf()
+    sql = next(s for s, _p in cur.execs if "FROM cliente WHERE cliCpfCgc" in s)
+    assert "ORDER BY" in sql.upper(), "lookup por documento sem ORDER BY é não determinístico"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# UPDATE que nao acha o registro NAO pode contar como sucesso
+# ══════════════════════════════════════════════════════════════════════════
+class _CursorRowcount(_Cursor):
+    """Cursor cujo UPDATE afeta `afetadas` linhas (0 = id inexistente)."""
+    def __init__(self, afetadas=1):
+        super().__init__()
+        self.rowcount = -1
+        self._afetadas = afetadas
+
+    def execute(self, sql, *params):
+        super().execute(sql, *params)
+        self.rowcount = self._afetadas if sql.startswith("UPDATE ") else -1
+        return self
+
+
+def _com_rowcount(classe, mapping, linha, afetadas):
+    cur = _CursorRowcount(afetadas)
+    imp = classe()
+    imp.conn = _Conn(cur)
+    imp.mapping = mapping
+    imp.df = pd.DataFrame([linha])
+    imp.logs = []
+    imp._log = imp.logs.append
+    return imp, cur
+
+
+def test_update_produto_com_id_inexistente_nao_conta_sucesso():
+    """proId que nao existe: 0 linhas afetadas — nao pode virar '1 atualizado'."""
+    imp, _cur = _com_rowcount(
+        ProdutosImportadorHeadless,
+        {"proId": "ID", "proDescricao": "DESC"},
+        {"ID": "999999", "DESC": "NAO EXISTE"}, afetadas=0)
+    imp._atualizar_produtos()
+    txt = " ".join(imp.logs)
+    assert "0 atualizados" in txt or "nao encontrado" in txt.lower(), \
+        f"deveria reportar que nada foi atualizado: {txt[:250]}"
+
+
+def test_update_cliente_com_id_inexistente_nao_conta_sucesso():
+    imp, _cur = _com_rowcount(
+        ClientesImportadorHeadless,
+        {"cliId": "ID", "cliNome": "NOME"},
+        {"ID": "999999", "NOME": "NAO EXISTE"}, afetadas=0)
+    imp._atualizar_clientes()
+    txt = " ".join(imp.logs)
+    assert "0 atualizados" in txt or "nao encontrado" in txt.lower(), \
+        f"deveria reportar que nada foi atualizado: {txt[:250]}"
+
+
+def test_update_que_afeta_linha_continua_contando_sucesso():
+    imp, _cur = _com_rowcount(
+        ProdutosImportadorHeadless,
+        {"proId": "ID", "proDescricao": "DESC"},
+        {"ID": "50", "DESC": "EXISTE"}, afetadas=1)
+    imp._atualizar_produtos()
+    assert "1 atualizados" in " ".join(imp.logs)

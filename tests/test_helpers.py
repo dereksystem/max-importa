@@ -891,3 +891,60 @@ def test_mixins_import_nao_dependem_de_atributos_so_da_gui():
         "(quebraria na migração, como os bugs de log_lines/_calc_cli_tipo). Mova a "
         "lógica para o mixin; ou, se for lazy (after-lambda) / hasattr e comprovadamente "
         "seguro, liste em allowlist_gui_seguro com justificativa. Suspeitos: " + repr(problemas))
+
+
+# ── NAO_ATUALIZADOS: as linhas que nao acharam o registro tem de sair em arquivo ──
+def test_exportar_gera_csv_de_nao_atualizados(tmp_path, monkeypatch):
+    """Sem este arquivo, o usuario nao tem como saber QUAIS linhas nao entraram."""
+    import csv as _csv
+    import mi_report
+    monkeypatch.setattr(mi_report, "_get_log_dir", lambda: str(tmp_path))
+
+    class _Win:
+        _ultimo_resultado = {"inseridos": 0, "pulados": 0, "erros": 0}
+        csv_path = "arq.txt"
+        _nao_atualizados = [
+            {"cliId": "999999", "cliNome": "X", "_linha": 2,
+             "_motivo": "cliId 999999 nao existe"},
+            {"cliCpfCgc": "00000000000", "_linha": 3,
+             "_motivo": "CPF/CNPJ ambiguo: casa com 7 clientes (1, 2, 3)"},
+        ]
+        def _log(self, *a, **k):
+            pass
+
+    mi_report._exportar_resultado(_Win(), "CLIENTES", [])
+
+    arqs = list(tmp_path.glob("NAO_ATUALIZADOS_CLIENTES_*.csv"))
+    assert len(arqs) == 1, f"esperava 1 CSV de nao atualizados, achei {arqs}"
+    with open(arqs[0], encoding="utf-8-sig", newline="") as f:
+        linhas = list(_csv.reader(f, delimiter=";"))
+    assert "_motivo" in linhas[0], "o motivo tem de estar no arquivo"
+    assert len(linhas) == 3, "cabecalho + 2 linhas"
+    corpo = " ".join(" ".join(l) for l in linhas[1:])
+    assert "nao existe" in corpo and "ambiguo" in corpo
+
+    # o JSON tambem tem de trazer a lista
+    import json
+    js = list(tmp_path.glob("RESULTADO_CLIENTES_*.json"))
+    assert js, "RESULTADO json nao gerado"
+    with open(js[0], encoding="utf-8") as f:
+        dados = json.load(f)
+    assert len(dados["nao_atualizados"]) == 2
+
+
+def test_exportar_sem_nao_atualizados_nao_cria_o_csv():
+    """Importacao limpa nao deve espalhar arquivo vazio na pasta de log."""
+    import mi_report, tempfile, os as _os
+    with tempfile.TemporaryDirectory() as d:
+        orig = mi_report._get_log_dir
+        mi_report._get_log_dir = lambda: d
+        try:
+            class _Win:
+                _ultimo_resultado = {"inseridos": 3, "pulados": 0, "erros": 0}
+                csv_path = "arq.txt"
+                def _log(self, *a, **k):
+                    pass
+            mi_report._exportar_resultado(_Win(), "PRODUTOS", [])
+            assert not [f for f in _os.listdir(d) if f.startswith("NAO_ATUALIZADOS")]
+        finally:
+            mi_report._get_log_dir = orig

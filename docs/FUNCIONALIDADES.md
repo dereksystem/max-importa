@@ -56,6 +56,25 @@ CPF/CNPJ):
   A tela reflete isso: sem selo `FALTA`, contador de obrigatórios contando só a chave e
   a seção renomeada para *"CAMPOS PRINCIPAIS (opcionais no UPDATE)"*.
 
+### UPDATE: o que NÃO é atualizado é reportado
+Duas situações em que o UPDATE **deixa de gravar** e diz por quê, em vez de seguir em
+silêncio. As linhas afetadas saem em **`NAO_ATUALIZADOS_<MÓDULO>_<ts>.csv`** (e no
+`RESULTADO_*.json`), com o motivo.
+
+- **CPF/CNPJ ambíguo** (só no UPDATE por documento): se o documento casa com **mais de um**
+  cliente, a linha é **pulada**. Antes, um `SELECT TOP 1` sem `ORDER BY` escolhia um deles
+  de forma **não determinística** e gravava por cima — sobrescrevendo o cadastro errado.
+  Não é caso raro: medido, o MAX_CENTRAL tem um CNPJ com **19** clientes, o BD_ZERO um CPF
+  com 15 e sete clientes no placeholder `00000000000`. Para atualizar mesmo assim, resolva
+  a duplicidade no Manager ou use o `cliId` como chave.
+- **Chave inexistente**: `proId`/`cliId` que não existe no banco afeta 0 linhas. Antes isso
+  contava como "✅ atualizado" — um arquivo inteiro com IDs errados terminava em *"500
+  atualizados"* sem ter mudado nada. Agora há um contador **"não encontrados"** próprio no
+  resumo, separado dos erros de gravação.
+- A contagem de linhas afetadas é ignorada em **dry-run** (o cursor simulado descarta a
+  escrita, então o `rowcount` restante seria o de outra consulta) e quando o driver não a
+  informa — nesses casos o sistema **não** conclui que o registro sumiu.
+
 ### Mapeamento de colunas
 - Cada campo do banco é mapeado a uma coluna do arquivo (auto-mapeamento por nome igual).
 - Campos não usados ficam em `[ ignorar ]`.

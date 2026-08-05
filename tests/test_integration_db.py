@@ -1000,3 +1000,71 @@ def test_multiloja_migracao_clientes_cria_vinculo_em_todas_as_empresas(orig_conn
         "GROUP BY empId")}
     assert sorted(filtro) == [1, 3], f"empresaFiltro nas empresas erradas: {filtro}"
     assert set(filtro.values()) == {n_cli}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UPDATE nao pode sobrescrever o cadastro ERRADO nem mentir no resumo
+# ─────────────────────────────────────────────────────────────────────────────
+def test_update_por_cpf_documento_ambiguo_nao_altera_ninguem(db_conn):
+    """O BD_ZERO tem 167 documentos repetidos (um deles em 15 clientes).
+
+    Antes, o `SELECT TOP 1` sem ORDER BY escolhia um ao acaso e gravava por cima —
+    o cadastro de um cliente que o usuario nem sabia que existia.
+    """
+    cur = db_conn.cursor()
+    doc = cur.execute(
+        "SELECT TOP 1 cliCpfCgc FROM cliente "
+        "WHERE cliCpfCgc IS NOT NULL AND LTRIM(RTRIM(cliCpfCgc)) <> '' "
+        "GROUP BY cliCpfCgc HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC").fetchone()
+    if not doc:
+        pytest.skip("o banco de teste nao tem documento repetido")
+    doc = doc[0]
+    antes = {r[0]: r[1] for r in cur.execute(
+        "SELECT cliId, cliNome FROM cliente WHERE cliCpfCgc = ?", doc)}
+    assert len(antes) > 1
+
+    obj = _harness_clientes(
+        db_conn, pd.DataFrame([{"cliCpfCgc": doc, "cliNome": "NOME QUE NAO PODE ENTRAR"}]),
+        {"cliCpfCgc": "cliCpfCgc", "cliNome": "cliNome"})
+    obj._atualizar_clientes_por_cpf()
+
+    depois = {r[0]: r[1] for r in db_conn.cursor().execute(
+        "SELECT cliId, cliNome FROM cliente WHERE cliCpfCgc = ?", doc)}
+    assert depois == antes, "nenhum cadastro podia ter sido tocado"
+    assert any("AMB" in l.upper() for l in obj._logs), obj._logs[-6:]
+    assert getattr(obj, "_nao_atualizados", []), "a linha tinha de ser registrada"
+
+
+def test_update_produto_id_inexistente_nao_conta_como_sucesso(db_conn):
+    cur = db_conn.cursor()
+    livre = (cur.execute("SELECT ISNULL(MAX(proId), 0) + 5000 FROM produto").fetchone()[0])
+    obj = _harness_produtos(
+        db_conn, pd.DataFrame([{"proId": str(livre), "proDescricao": "NAO EXISTE"}]),
+        {"proId": "proId", "proDescricao": "proDescricao"})
+    obj._atualizar_produtos()
+
+    txt = " ".join(obj._logs)
+    assert "0 atualizados" in txt, f"nao podia contar sucesso: {txt[-250:]}"
+    assert "1 nao encontrados" in txt or "não existe" in txt, txt[-250:]
+    assert getattr(obj, "_nao_atualizados", []), "a linha tinha de ser registrada"
+    # e o produto realmente nao foi criado por acidente
+    assert cur.execute("SELECT COUNT(*) FROM produto WHERE proId = ?", livre).fetchone()[0] == 0
+
+
+def test_update_cliente_id_existente_continua_contando_sucesso(db_conn):
+    """Regressao: a checagem nova nao pode fazer o caminho normal parar de contar."""
+    cur = db_conn.cursor()
+    alvo = cur.execute("SELECT TOP 1 cliId FROM cliente WHERE cliId >= 10 "
+                       "ORDER BY cliId").fetchone()
+    if not alvo:
+        pytest.skip("banco de teste sem cliente >= 10")
+    cli_id = alvo[0]
+    tag = uuid.uuid4().hex[:6].upper()
+    obj = _harness_clientes(
+        db_conn, pd.DataFrame([{"cliId": str(cli_id), "cliNome": f"RENOMEADO {tag}"}]),
+        {"cliId": "cliId", "cliNome": "cliNome"})
+    obj._atualizar_clientes()
+
+    assert "1 atualizados" in " ".join(obj._logs), obj._logs[-5:]
+    assert db_conn.cursor().execute(
+        "SELECT cliNome FROM cliente WHERE cliId = ?", cli_id).fetchone()[0] == f"RENOMEADO {tag}"

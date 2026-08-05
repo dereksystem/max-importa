@@ -1106,6 +1106,56 @@ BUG: botoes da janela de selecao sumiam com poucas empresas
   codigo antigo: os casos de 2 e 3 empresas falham.
 
 --------------------------------------------------------
+ [4.1.1] - 2026-07-31
+--------------------------------------------------------
+CRITICO - o UPDATE por CPF/CNPJ sobrescrevia o cadastro ERRADO
+- A busca era "SELECT TOP 1 cliId FROM cliente WHERE
+  cliCpfCgc = ?" - SEM ORDER BY e sem checar ambiguidade.
+  Com documento repetido o SQL Server NAO garante qual linha
+  volta: o sistema escolhia uma ao acaso e gravava os dados do
+  arquivo por cima dela. O cadastro de um cliente que ninguem
+  pretendia tocar era sobrescrito, e de forma NAO
+  deterministica entre execucoes.
+- NAO e caso raro. Medido nas bases reais: MAX_CENTRAL tem 159
+  documentos repetidos (um CNPJ com 19 clientes), BD_ZERO tem
+  167 (um CPF com 15, e sete clientes no placeholder
+  00000000000) e MAX_GROW tem 45.
+- Agora a consulta traz TODOS os candidatos, com ORDER BY cliId
+  para ser deterministica. Havendo mais de um, a linha e PULADA
+  (nenhum cadastro e tocado) e o motivo fica registrado com os
+  cliId envolvidos. Para atualizar mesmo assim: resolver a
+  duplicidade no Manager ou usar o cliId como chave.
+- Novo contador "ambiguos" no resumo do UPDATE por documento.
+
+BUG: o resumo dizia "atualizado" sem ter alterado nada
+- O rowcount nao era verificado em lugar nenhum: um UPDATE com
+  cliId inexistente afeta 0 linhas e mesmo assim entrava como
+  "atualizado". Um arquivo inteiro com IDs errados terminava em
+  "500 atualizados" sem ter mudado uma linha.
+- Produtos e Clientes passam a conferir as linhas afetadas e a
+  contar "nao encontrados" a parte, separado dos erros.
+- A conferencia e IGNORADA em dry-run (o cursor simulado
+  descarta a escrita, entao o rowcount restante seria de outra
+  consulta) e quando o driver nao informa - nesses casos o
+  sistema NAO conclui que o registro sumiu.
+
+NOVO ARQUIVO: NAO_ATUALIZADOS_<MODULO>_<ts>.csv
+- As linhas que nao acharam o registro (id inexistente,
+  documento ambiguo) saem num CSV com o MOTIVO, e tambem no
+  RESULTADO_*.json. Nao sao erro de gravacao, mas o efeito para
+  quem importou e o mesmo: aquela linha nao entrou.
+
+AUDITORIA dos tres caminhos de UPDATE
+- O resto estava integro: em Produtos, todos os campos gravados
+  fora do _montar_set_update (lookups de fabricante, grupo,
+  subgrupo, classe, NCM e CEST, os tres campos de unidade e o
+  proCodCst1) ja tinham guarda "is not None". A protecao de
+  celula vazia da v4.0.2 continua valendo nos tres caminhos,
+  inclusive apos as mudancas do multi-loja.
+- 9 testes novos (3 contra o banco real, usando os documentos
+  repetidos que ja existem no BD_ZERO). Suite: 358 com banco.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

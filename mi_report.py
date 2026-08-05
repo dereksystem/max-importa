@@ -332,7 +332,10 @@ def _nome_banco(win) -> str:
 def _exportar_resultado(win, prefixo: str, nomes_erro: list) -> None:
     """Exporta o resultado da operação de forma ESTRUTURADA (além dos .txt):
       - RESULTADO_<prefixo>_<ts>.json : resumo (versão, banco, contagens, erros);
-      - ERROS_<prefixo>_<ts>.csv      : itens com erro (abre no Excel), se houver.
+      - ERROS_<prefixo>_<ts>.csv      : itens com erro (abre no Excel), se houver;
+      - NAO_ATUALIZADOS_<prefixo>_<ts>.csv : linhas que não acharam o registro
+        (id inexistente, CPF/CNPJ ambíguo) — não é erro de gravação, mas também
+        não entrou.
     Best-effort: nunca interrompe a importação se a exportação falhar."""
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -369,6 +372,28 @@ def _exportar_resultado(win, prefixo: str, nomes_erro: list) -> None:
                 for n in nomes_erro:
                     w.writerow([str(n)])
             win._log(f"🧾 Erros (CSV) salvos: {os.path.basename(csv_path)}")
+
+        # Linhas que NÃO foram atualizadas (id inexistente, documento ambíguo).
+        # Não são erro de gravação, mas o efeito para quem importou é o mesmo: aquela
+        # linha não entrou. Sem este arquivo, o usuário não tem como saber quais.
+        nao_atu = getattr(win, "_nao_atualizados", None)
+        if nao_atu:
+            dados["nao_atualizados"] = nao_atu
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(dados, f, ensure_ascii=False, indent=2, default=str)
+            cols = []
+            for linha in nao_atu:                    # união das chaves, ordem estável
+                for k in linha:
+                    if k not in cols:
+                        cols.append(k)
+            na_path = os.path.join(log_dir, f"NAO_ATUALIZADOS_{prefixo}_{ts}.csv")
+            with open(na_path, "w", encoding="utf-8-sig", newline="") as f:
+                w = csv.writer(f, delimiter=";")
+                w.writerow(cols)
+                for linha in nao_atu:
+                    w.writerow([linha.get(c, "") for c in cols])
+            win._log(f"🧾 {len(nao_atu)} linha(s) NÃO atualizada(s): "
+                     f"{os.path.basename(na_path)}")
     except Exception as e:
         try:
             win._log(f"⚠️ Falha ao exportar resultado CSV/JSON: {str(e)[:150]}")

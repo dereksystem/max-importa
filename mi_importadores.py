@@ -303,6 +303,7 @@ class ProdutosImportMixin:
         self._log(f"🔄 Iniciando UPDATE — {total} registros | empId={emp_id}")
 
         nomes_erro = []       # nomes dos produtos que deram erro na atualizacao
+        nao_encontrados = 0   # proId do arquivo que não existe no banco
         uns_criadas_upd = set()
 
         for idx, row in self.df.iterrows():
@@ -360,12 +361,16 @@ class ProdutosImportMixin:
                     set_prod.append("proUnTrib = ?");        vals_prod.append(un_info_upd["unpUn"])
                     set_prod.append("proUnTribId = ?");      vals_prod.append(un_info_upd["unpId"])
 
+                # rowcount −1 = o driver não informou; só 0 é "não achou".
+                _afetou = None
                 if set_prod:
                     cursor.execute(
                         f"UPDATE produto SET {', '.join(set_prod)} WHERE proId = ?",
                         vals_prod + [pro_id]
                     )
+                    _afetou = self._linhas_afetadas(cursor)
 
+                _afetou_emp = None
                 # Campos a atualizar em produto_empresa (idem: só os preenchidos)
                 mapa_emp = {
                     "proAtacado":      (self._get_float, "proAtacado"),
@@ -401,6 +406,19 @@ class ProdutosImportMixin:
                         f"WHERE proId = ? AND empId IN ({_in})",
                         vals_emp + [pro_id] + list(emps_alvo)
                     )
+                    _afetou_emp = self._linhas_afetadas(cursor)
+
+                # proId inexistente: 0 linhas afetadas nas DUAS tabelas. Contar isso
+                # como sucesso escondia importação inteira que não entrou.
+                if _afetou == 0 and _afetou_emp in (0, None):
+                    nao_encontrados += 1
+                    if nao_encontrados <= 5:
+                        self._log(f"⚠️  Linha {idx+2}: proId {pro_id} não existe no banco "
+                                  f"— nada foi atualizado.")
+                    self._registrar_nao_atualizado(row, idx, f"proId {pro_id} nao existe")
+                    self.conn.rollback()
+                    self._set_progresso(idx + 1, total)
+                    continue
 
                 self.conn.commit()
                 # ── Inserir Codigo EAN em codBarras ──────────────────────────
@@ -432,7 +450,8 @@ class ProdutosImportMixin:
         _sim = bool(getattr(self, "_dry_run", False))
         self._log(f"🔎 SIMULAÇÃO concluída — ✅ {sucessos} SERIAM atualizados | ❌ {erros} erros"
                   if _sim else
-                  f"🎉 UPDATE finalizado — ✅ {sucessos} atualizados | ❌ {erros} erros")
+                  f"🎉 UPDATE finalizado — ✅ {sucessos} atualizados | "
+                  f"⚠️ {nao_encontrados} nao encontrados | ❌ {erros} erros")
         for _l in self._resumo_simulacao() + self._resumo_alertas():
             self._log(_l)
 
@@ -972,6 +991,7 @@ class ClientesImportMixin:
         sucessos = 0
         erros    = 0
         nao_enc  = 0
+        ambiguos = 0
         _emps_todas, emps_alvo = self._resolver_empresas(cursor)
         emp_id   = emps_alvo[0]
 
@@ -993,18 +1013,39 @@ class ClientesImportMixin:
                     self._set_progresso(idx + 1, total)
                     continue
 
+                # ⚠️ Documento REPETIDO é comum na base real (medido: 19 clientes no
+                # mesmo CNPJ no MAX_CENTRAL, 15 num CPF do BD_ZERO, e 7 no placeholder
+                # 00000000000). Um "TOP 1" sem ORDER BY escolhia um deles de forma NÃO
+                # determinística e gravava por cima — sobrescrevendo um cadastro que o
+                # usuário não pretendia tocar. Agora: busca TODOS e, se houver mais de
+                # um, não grava em ninguém. O ORDER BY torna a consulta determinística.
                 cursor.execute(
-                    "SELECT TOP 1 cliId FROM cliente WHERE cliCpfCgc = ?",
+                    "SELECT cliId FROM cliente WHERE cliCpfCgc = ? ORDER BY cliId",
                     (cpf_cnpj,)
                 )
-                row_db = cursor.fetchone()
-                if not row_db:
+                achados = cursor.fetchall()
+                if not achados:
                     self._log(f"Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' nao encontrado — pulado.")
                     nao_enc += 1
+                    self._registrar_nao_atualizado(
+                        row, idx, f"CPF/CNPJ '{cpf_cnpj}' nao encontrado")
+                    self._set_progresso(idx + 1, total)
+                    continue
+                if len(achados) > 1:
+                    ids = ", ".join(str(a[0]) for a in achados[:10])
+                    if len(achados) > 10:
+                        ids += ", …"
+                    ambiguos += 1
+                    self._log(f"⚠️  Linha {idx+2}: CPF/CNPJ '{cpf_cnpj}' é AMBÍGUO — casa "
+                              f"com {len(achados)} clientes (cliId {ids}). Linha PULADA: "
+                              f"atualizar um deles ao acaso sobrescreveria o cadastro errado.")
+                    self._registrar_nao_atualizado(
+                        row, idx,
+                        f"CPF/CNPJ ambiguo: casa com {len(achados)} clientes ({ids})")
                     self._set_progresso(idx + 1, total)
                     continue
 
-                cli_id   = row_db[0]
+                cli_id   = achados[0][0]
                 data_inc = self._get_datetime(row, "DataInclusao")
 
                 if isinstance(cli_id, int) and cli_id < 10:
@@ -1077,7 +1118,12 @@ class ClientesImportMixin:
         self._log(f"UPDATE por CPF/CNPJ finalizado — "
                   f"{sucessos} atualizados | "
                   f"{nao_enc} nao encontrados | "
+                  f"{ambiguos} ambiguos (pulados) | "
                   f"{erros} erros")
+        if ambiguos:
+            self._log(f"⚠️  {ambiguos} linha(s) tinham CPF/CNPJ repetido no banco e NÃO "
+                      f"foram atualizadas — veja o arquivo de erros e resolva a "
+                      f"duplicidade no Manager, ou use o cliId como chave.")
         _pos_importacao(self, "CLIENTES", nomes_erro, erros > 0)
         self._salvar_relatorio()
         self.after(0, lambda: self.btn_import.configure(state="normal"))
@@ -1097,6 +1143,7 @@ class ClientesImportMixin:
         self._log(f"Iniciando UPDATE clientes — {total} registros | empId={emp_id}")
 
         nomes_erro = []       # nomes dos clientes que deram erro na atualizacao
+        nao_encontrados = 0   # cliId do arquivo que não existe no banco
 
         for idx, row in self.df.iterrows():
             if self._cancelado:
@@ -1149,11 +1196,25 @@ class ClientesImportMixin:
                     set_cli.append("cliDatCad = ?")
                     vals_cli.append(data_inc)
 
+                _afetou = None
                 if set_cli:
                     cursor.execute(
                         f"UPDATE cliente SET {', '.join(set_cli)} WHERE cliId = ?",
                         vals_cli + [cli_id]
                     )
+                    _afetou = self._linhas_afetadas(cursor)
+
+                # cliId inexistente: nada foi alterado. Contar como sucesso escondia
+                # arquivo inteiro com IDs errados terminando em "tudo certo".
+                if _afetou == 0:
+                    nao_encontrados += 1
+                    if nao_encontrados <= 5:
+                        self._log(f"⚠️  Linha {idx+2}: cliId {cli_id} não existe no banco "
+                                  f"— nada foi atualizado.")
+                    self._registrar_nao_atualizado(row, idx, f"cliId {cli_id} nao existe")
+                    self.conn.rollback()
+                    self._set_progresso(idx + 1, total)
+                    continue
 
                 # ── UPDATE cliente_empresa ───────────────────────────────────
                 set_emp  = []
@@ -1183,7 +1244,8 @@ class ClientesImportMixin:
 
             self._set_progresso(idx + 1, total)
 
-        self._log(f"🎉 UPDATE finalizado — ✅ {sucessos} atualizados | ❌ {erros} erros")
+        self._log(f"🎉 UPDATE finalizado — ✅ {sucessos} atualizados | "
+                  f"⚠️ {nao_encontrados} nao encontrados | ❌ {erros} erros")
         _pos_importacao(self, "CLIENTES", nomes_erro, erros > 0)
         self._salvar_relatorio()
         self.after(0, lambda: self.btn_import.configure(state="normal"))
