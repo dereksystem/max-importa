@@ -330,3 +330,186 @@ def test_update_que_afeta_linha_continua_contando_sucesso():
         {"ID": "50", "DESC": "EXISTE"}, afetadas=1)
     imp._atualizar_produtos()
     assert "1 atualizados" in " ".join(imp.logs)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# cliCelular — campo opcional, mesmo tratamento do cliFone
+# ══════════════════════════════════════════════════════════════════════════
+def test_cliCelular_e_opcional_na_tela():
+    campos = {n: ob for n, _t, _d, ob in MI_MAIN.JanelaClientes.CAMPOS_CLIENTE}
+    assert "cliCelular" in campos, "cliCelular precisa estar mapeável na tela"
+    assert campos["cliCelular"] is False, "cliCelular é OPCIONAL"
+    assert "cliCelular" not in MI_MAIN.JanelaClientes.CAMPOS_OBRIGATORIOS
+
+
+def test_cliCelular_entra_no_insert():
+    from mi_importadores import ClientesImportMixin as C
+    for ident in (True, False):
+        sql = C._sql_cli(ident, 1)
+        assert "cliCelular" in sql, f"cliCelular ausente do INSERT (identity={ident})"
+
+
+@pytest.mark.parametrize("ident,n_emp", [(True, 1), (True, 3), (False, 1), (False, 3)])
+def test_cliCelular_nao_desalinhou_os_markers(ident, n_emp):
+    """O campo novo entra na lista de colunas E na de valores — senão desloca tudo."""
+    import re
+    from mi_importadores import ClientesImportMixin as C
+    sql = C._sql_cli(ident, n_emp)
+    for m in re.finditer(r"INSERT INTO (\w+) \(([^)]*)\) VALUES \(([^)]*)\)", sql, re.S):
+        nc = len([c for c in m.group(2).split(",") if c.strip()])
+        nv = len([v for v in m.group(3).split(",") if v.strip()])
+        assert nc == nv, f"{m.group(1)}: {nc} colunas x {nv} valores"
+    # 18 campos do cliente (era 17) + por empresa
+    base = 18 if ident else 1 + 19
+    assert sql.count("?") == base + n_emp * (9 if ident else 11)
+
+
+def test_cliCelular_atualiza_quando_preenchido():
+    imp, cur = _montar(
+        ClientesImportadorHeadless,
+        {"cliId": "ID", "cliCelular": "CEL"},
+        {"ID": "1234", "CEL": "63999887766"},
+    )
+    imp._atualizar_clientes()
+    assert "cliCelular" in cur.sets_de("cliente")
+    assert "63999887766" in cur.params_de("cliente")
+
+
+def test_cliCelular_vazio_nao_apaga():
+    """Mesma regra dos demais: célula vazia mantém o que está no banco."""
+    imp, cur = _montar(
+        ClientesImportadorHeadless,
+        {"cliId": "ID", "cliNome": "NOME", "cliCelular": "CEL"},
+        {"ID": "1234", "NOME": "FULANO", "CEL": "  "},
+    )
+    imp._atualizar_clientes()
+    cols = cur.sets_de("cliente")
+    assert "cliNome" in cols
+    assert "cliCelular" not in cols, "celula vazia APAGARIA o celular existente"
+
+
+def test_cliCelular_e_cortado_em_20(monkeypatch):
+    """A coluna é varchar(20), igual ao cliFone — valor maior não pode estourar."""
+    imp, cur = _montar(
+        ClientesImportadorHeadless,
+        {"cliId": "ID", "cliCelular": "CEL"},
+        {"ID": "1234", "CEL": "9" * 30},
+    )
+    imp._atualizar_clientes()
+    grav = [p for p in cur.params_de("cliente") if isinstance(p, str) and p.startswith("9")]
+    assert grav and len(grav[0]) == 20, f"esperava corte em 20, veio {grav}"
+
+
+def test_cliCelular_no_update_por_cpf():
+    imp, cur = _por_cpf({"12345678901": [77]},
+                        {"DOC": "12345678901", "NOME": "N"})
+    imp.mapping = {"cliCpfCgc": "DOC", "cliCelular": "CEL"}
+    imp.df = pd.DataFrame([{"DOC": "12345678901", "CEL": "63988776655"}])
+    imp._atualizar_clientes_por_cpf()
+    assert "cliCelular" in cur.sets_de("cliente")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Corte de textos no UPDATE — os MESMOS limites do INSERT
+# ══════════════════════════════════════════════════════════════════════════
+# O INSERT sempre cortou cada texto no tamanho da coluna (_get_str_max); o UPDATE
+# só cortava o cliFatEndNumero. Consequência: um cliNome de 60 caracteres ENTRAVA
+# pelo INSERT (cortado em 50) e a MESMA linha morria no UPDATE com o erro 22001
+# ("String or binary data would be truncated"), indo para o arquivo de erros sem
+# motivo aparente para quem só olha o arquivo de origem.
+
+# Tamanho real das colunas de texto de `cliente` (oráculo independente do código).
+_LIM_CLI = {
+    "cliCpfCgc":         20,
+    "cliNome":           50,
+    "cliFantasia":       50,
+    "cliRgInsc":         20,
+    "cliFatEnd":        120,
+    "cliFatEndNumero":   10,
+    "cliFatBairro":      70,
+    "cliFatCidade":      30,
+    "cliFatUf":           2,
+    "cliFatCep":          9,
+    "cliFatCidCodIBGE":  20,
+    "cliEmail":         254,
+    "cliFone":           20,
+    "cliCelular":        20,
+}
+
+
+def _gravado_com_X(cur, tabela):
+    """O valor de teste ("XXXX…") tal como foi para o banco no SET."""
+    return [p for p in cur.params_de(tabela) if isinstance(p, str) and p.startswith("X")]
+
+
+@pytest.mark.parametrize("campo,limite", sorted(_LIM_CLI.items()))
+def test_update_cliente_corta_texto_no_tamanho_da_coluna(campo, limite):
+    """Valor maior que a coluna: o UPDATE corta, igual ao INSERT (não estoura)."""
+    imp, cur = _montar(
+        ClientesImportadorHeadless,
+        {"cliId": "ID", campo: "VAL"},
+        {"ID": "1234", "VAL": "X" * (limite + 10)},
+    )
+    imp._atualizar_clientes()
+
+    grav = _gravado_com_X(cur, "cliente")
+    assert grav, f"{campo} preenchido tinha de entrar no SET"
+    assert len(grav[0]) == limite, \
+        f"{campo}: esperava corte em {limite}, veio {len(grav[0])} (erro 22001 no banco)"
+
+
+@pytest.mark.parametrize(
+    "campo,limite",
+    sorted((c, l) for c, l in _LIM_CLI.items() if c != "cliCpfCgc"))  # é a chave
+def test_update_por_cpf_corta_texto_no_tamanho_da_coluna(campo, limite):
+    """Mesmo corte no UPDATE por CPF/CNPJ — é outro mapa_cli, divergiu antes."""
+    imp, cur = _por_cpf({"12345678901": [77]}, {"DOC": "12345678901"})
+    imp.mapping = {"cliCpfCgc": "DOC", campo: "VAL"}
+    imp.df = pd.DataFrame([{"DOC": "12345678901", "VAL": "X" * (limite + 10)}])
+    imp._atualizar_clientes_por_cpf()
+
+    grav = _gravado_com_X(cur, "cliente")
+    assert grav, f"{campo} preenchido tinha de entrar no SET"
+    assert len(grav[0]) == limite, \
+        f"{campo}: esperava corte em {limite}, veio {len(grav[0])}"
+
+
+def test_texto_curto_nao_e_alterado_pelo_corte():
+    """O corte só age no que passa do limite — não mexe no valor normal."""
+    imp, cur = _montar(
+        ClientesImportadorHeadless,
+        {"cliId": "ID", "cliNome": "NOME"},
+        {"ID": "1234", "NOME": "CLIENTE NORMAL"},
+    )
+    imp._atualizar_clientes()
+    assert "CLIENTE NORMAL" in cur.params_de("cliente")
+
+
+def test_insert_e_update_de_cliente_usam_a_MESMA_tabela_de_limites():
+    """Um só lugar guarda o tamanho das colunas: foi a duplicação (números no
+    INSERT, nada no UPDATE) que produziu a divergência."""
+    from mi_importadores import ClientesImportMixin
+    assert ClientesImportMixin.TAM_MAX == _LIM_CLI
+
+
+# ── Produtos: mesmo contrato (INSERT e UPDATE já cortavam; fica travado) ──
+_LIM_PROD = {"proDescricao": 100, "proUn": 10, "proTipo": 1}
+_LIM_PROD_EMP = {"proCodCSOSN": 3, "proCodCst2": 2, "proCodigo": 50,
+                 "proLocalizador": 20, "proPrateleira": 20}
+
+
+@pytest.mark.parametrize("tabela,campo,limite", sorted(
+    [("produto", c, l) for c, l in _LIM_PROD.items()] +
+    [("produto_empresa", c, l) for c, l in _LIM_PROD_EMP.items()]))
+def test_update_produto_corta_texto_no_tamanho_da_coluna(tabela, campo, limite):
+    imp, cur = _montar(
+        ProdutosImportadorHeadless,
+        {"proId": "ID", campo: "VAL"},
+        {"ID": "50", "VAL": "X" * (limite + 10)},
+    )
+    imp._atualizar_produtos()
+
+    grav = _gravado_com_X(cur, tabela)
+    assert grav, f"{campo} preenchido tinha de entrar no SET de {tabela}"
+    assert len(grav[0]) == limite, \
+        f"{campo}: esperava corte em {limite}, veio {len(grav[0])}"

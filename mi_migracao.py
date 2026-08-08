@@ -188,7 +188,7 @@ class MigracaoMixin:
         cols = ["c.cliId AS cliId"]
         for col in ("cliCpfCgc", "cliNome", "cliFantasia", "cliRgInsc", "cliFatEnd",
                     "cliFatEndNumero", "cliFatBairro", "cliFatCidade", "cliFatCidCodIBGE",
-                    "cliFatUf", "cliFatCep", "cliEmail", "cliFone", "cliDesativa",
+                    "cliFatUf", "cliFatCep", "cliEmail", "cliFone", "cliCelular", "cliDesativa",
                     "cliTipoCad", "cliTipo"):
             cols.append(self._c(c, "c", col))
         # DataInclusao: cliente_empresa.cliDatCad -> cliente.cliDatCad -> NULL

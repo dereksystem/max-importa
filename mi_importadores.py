@@ -584,6 +584,38 @@ class ProdutosImportMixin:
 
 
 class ClientesImportMixin:
+    # Tamanho das colunas de texto de `cliente`. O valor que passa do limite é
+    # CORTADO (comportamento documentado em docs/FUNCIONALIDADES.md), senão o SQL
+    # Server derruba a linha com o erro 22001 ("String or binary data would be
+    # truncated"). Fica num lugar só porque INSERT e UPDATE precisam do MESMO
+    # limite: enquanto os números estavam repetidos no INSERT e ausentes no UPDATE,
+    # um cliNome de 60 caracteres entrava pelo INSERT (cortado em 50) e a MESMA
+    # linha ia para o arquivo de erros no UPDATE.
+    TAM_MAX = {
+        "cliCpfCgc":         20,
+        "cliNome":           50,
+        "cliFantasia":       50,
+        "cliRgInsc":         20,
+        "cliFatEnd":        120,
+        "cliFatEndNumero":   10,
+        "cliFatBairro":      70,
+        "cliFatCidade":      30,
+        "cliFatUf":           2,
+        "cliFatCep":          9,
+        "cliFatCidCodIBGE":  20,
+        "cliEmail":         254,
+        "cliFone":           20,
+        "cliCelular":        20,
+    }
+
+    def _get_str_cli(self, row, campo):
+        """_get_str cortado no tamanho da coluna (TAM_MAX).
+
+        Assinatura (row, campo) para servir tanto ao INSERT quanto ao `mapa_cli` do
+        _montar_set_update. Campo fora do TAM_MAX é erro de programação (KeyError):
+        toda coluna de texto do cliente tem de declarar o seu tamanho aqui."""
+        return self._get_str_max(row, campo, self.TAM_MAX[campo])
+
     # ── INSERT combinado (otimização c): cliente + cliente_empresa num único batch ──
     # Antes eram ~5 round-trips por linha (SET NOCOUNT, INSERT cliente, SELECT @@IDENTITY,
     # INSERT cliente_empresa, commit). Juntando os dois INSERTs e a captura do id num
@@ -632,8 +664,8 @@ class ClientesImportMixin:
         "DECLARE @id INT;\n"
         "INSERT INTO cliente (cliCpfCgc, cliNome, cliFantasia, cliRgInsc, cliFatEnd,\n"
         "  cliFatEndNumero, cliFatBairro, cliFatCidade, cliFatUf, cliFatCep,\n"
-        "  cliFatCidCodIBGE, cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,\n"
-        "  cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
+        "  cliFatCidCodIBGE, cliEmail, cliFone, cliCelular, cliDesativa, cliTipoCad,\n"
+        "  cliTipo, cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
         "SET @id = @@IDENTITY;\n"
         "IF @id IS NULL RAISERROR('IDENTITY NULL apos INSERT cliente', 16, 1);\n"
     )
@@ -644,8 +676,8 @@ class ClientesImportMixin:
         "IF NOT EXISTS (SELECT 1 FROM cliente WHERE cliId = ?)\n"
         "  INSERT INTO cliente (cliId, cliCpfCgc, cliNome, cliFantasia, cliRgInsc,\n"
         "    cliFatEnd, cliFatEndNumero, cliFatBairro, cliFatCidade, cliFatUf, cliFatCep,\n"
-        "    cliFatCidCodIBGE, cliEmail, cliFone, cliDesativa, cliTipoCad, cliTipo,\n"
-        "    cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
+        "    cliFatCidCodIBGE, cliEmail, cliFone, cliCelular, cliDesativa, cliTipoCad,\n"
+        "    cliTipo, cliDatCad) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);\n"
     )
 
     def _calc_cli_tipo(self, row):
@@ -864,19 +896,20 @@ class ClientesImportMixin:
                 # semântica são idênticos aos INSERTs separados de antes.
                 _zero_dec = Decimal('0.00000')
                 _campos_cli = (
-                    self._get_str_max(row, "cliCpfCgc",        20),
-                    self._get_str_max(row, "cliNome",           50),
-                    self._get_str_max(row, "cliFantasia",       50),
-                    self._get_str_max(row, "cliRgInsc",         20),
-                    self._get_str_max(row, "cliFatEnd",        120),
-                    self._get_str_max(row, "cliFatEndNumero",   10),
-                    self._get_str_max(row, "cliFatBairro",      70),
-                    self._get_str_max(row, "cliFatCidade",      30),
-                    self._get_str_max(row, "cliFatUf",           2),
-                    self._get_str_max(row, "cliFatCep",          9),
-                    self._get_str_max(row, "cliFatCidCodIBGE",  20),
-                    self._get_str_max(row, "cliEmail",         254),
-                    self._get_str_max(row, "cliFone",           20),
+                    self._get_str_cli(row, "cliCpfCgc"),
+                    self._get_str_cli(row, "cliNome"),
+                    self._get_str_cli(row, "cliFantasia"),
+                    self._get_str_cli(row, "cliRgInsc"),
+                    self._get_str_cli(row, "cliFatEnd"),
+                    self._get_str_cli(row, "cliFatEndNumero"),
+                    self._get_str_cli(row, "cliFatBairro"),
+                    self._get_str_cli(row, "cliFatCidade"),
+                    self._get_str_cli(row, "cliFatUf"),
+                    self._get_str_cli(row, "cliFatCep"),
+                    self._get_str_cli(row, "cliFatCidCodIBGE"),
+                    self._get_str_cli(row, "cliEmail"),
+                    self._get_str_cli(row, "cliFone"),
+                    self._get_str_cli(row, "cliCelular"),
                     self._get_int(row, "cliDesativa", 0),
                     self._get_int(row, "cliTipoCad",  0),
                     self._calc_cli_tipo(row),
@@ -1053,20 +1086,22 @@ class ClientesImportMixin:
                     self._set_progresso(idx + 1, total)
                     continue
 
-                # Só os campos mapeados E preenchidos (vazio não apaga o banco)
+                # Só os campos mapeados E preenchidos (vazio não apaga o banco).
+                # Textos cortados no tamanho da coluna — os MESMOS limites do INSERT.
                 mapa_cli = {
-                    "cliNome":          (self._get_str, "cliNome"),
-                    "cliFantasia":      (self._get_str, "cliFantasia"),
-                    "cliRgInsc":        (self._get_str, "cliRgInsc"),
-                    "cliFatEnd":        (self._get_str, "cliFatEnd"),
-                    "cliFatEndNumero":  (lambda r, c: self._get_str_max(r, c, 10), "cliFatEndNumero"),
-                    "cliFatBairro":     (self._get_str, "cliFatBairro"),
-                    "cliFatCidade":     (self._get_str, "cliFatCidade"),
-                    "cliFatUf":         (self._get_str, "cliFatUf"),
-                    "cliFatCep":        (self._get_str, "cliFatCep"),
-                    "cliFatCidCodIBGE": (self._get_str, "cliFatCidCodIBGE"),
-                    "cliEmail":         (self._get_str, "cliEmail"),
-                    "cliFone":          (self._get_str, "cliFone"),
+                    "cliNome":          (self._get_str_cli, "cliNome"),
+                    "cliFantasia":      (self._get_str_cli, "cliFantasia"),
+                    "cliRgInsc":        (self._get_str_cli, "cliRgInsc"),
+                    "cliFatEnd":        (self._get_str_cli, "cliFatEnd"),
+                    "cliFatEndNumero":  (self._get_str_cli, "cliFatEndNumero"),
+                    "cliFatBairro":     (self._get_str_cli, "cliFatBairro"),
+                    "cliFatCidade":     (self._get_str_cli, "cliFatCidade"),
+                    "cliFatUf":         (self._get_str_cli, "cliFatUf"),
+                    "cliFatCep":        (self._get_str_cli, "cliFatCep"),
+                    "cliFatCidCodIBGE": (self._get_str_cli, "cliFatCidCodIBGE"),
+                    "cliEmail":         (self._get_str_cli, "cliEmail"),
+                    "cliFone":          (self._get_str_cli, "cliFone"),
+                    "cliCelular":       (self._get_str_cli, "cliCelular"),
                     "cliDesativa":      (self._get_int, "cliDesativa"),
                     "cliTipoCad":       (self._get_int, "cliTipoCad"),
                 }
@@ -1166,20 +1201,22 @@ class ClientesImportMixin:
                 data_inc = self._get_datetime(row, "DataInclusao")
 
                 # ── UPDATE cliente (mapeados E preenchidos) ──────────────────
+                # Textos cortados no tamanho da coluna — os MESMOS limites do INSERT.
                 mapa_cli = {
-                    "cliCpfCgc":        (self._get_str, "cliCpfCgc"),
-                    "cliNome":          (self._get_str, "cliNome"),
-                    "cliFantasia":      (self._get_str, "cliFantasia"),
-                    "cliRgInsc":        (self._get_str, "cliRgInsc"),
-                    "cliFatEnd":        (self._get_str, "cliFatEnd"),
-                    "cliFatEndNumero":  (lambda r, c: self._get_str_max(r, c, 10), "cliFatEndNumero"),
-                    "cliFatBairro":     (self._get_str, "cliFatBairro"),
-                    "cliFatCidade":     (self._get_str, "cliFatCidade"),
-                    "cliFatUf":         (self._get_str, "cliFatUf"),
-                    "cliFatCep":        (self._get_str, "cliFatCep"),
-                    "cliFatCidCodIBGE": (self._get_str, "cliFatCidCodIBGE"),
-                    "cliEmail":         (self._get_str, "cliEmail"),
-                    "cliFone":          (self._get_str, "cliFone"),
+                    "cliCpfCgc":        (self._get_str_cli, "cliCpfCgc"),
+                    "cliNome":          (self._get_str_cli, "cliNome"),
+                    "cliFantasia":      (self._get_str_cli, "cliFantasia"),
+                    "cliRgInsc":        (self._get_str_cli, "cliRgInsc"),
+                    "cliFatEnd":        (self._get_str_cli, "cliFatEnd"),
+                    "cliFatEndNumero":  (self._get_str_cli, "cliFatEndNumero"),
+                    "cliFatBairro":     (self._get_str_cli, "cliFatBairro"),
+                    "cliFatCidade":     (self._get_str_cli, "cliFatCidade"),
+                    "cliFatUf":         (self._get_str_cli, "cliFatUf"),
+                    "cliFatCep":        (self._get_str_cli, "cliFatCep"),
+                    "cliFatCidCodIBGE": (self._get_str_cli, "cliFatCidCodIBGE"),
+                    "cliEmail":         (self._get_str_cli, "cliEmail"),
+                    "cliFone":          (self._get_str_cli, "cliFone"),
+                    "cliCelular":       (self._get_str_cli, "cliCelular"),
                     "cliDesativa":      (self._get_int, "cliDesativa"),
                     "cliTipoCad":       (self._get_int, "cliTipoCad"),
                 }

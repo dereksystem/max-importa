@@ -43,7 +43,7 @@ Fluxo:
 2. **Leitura da origem:** TODOS os clientes (inclusive `cliId` 1–10), com os campos:
    `cliCpfCgc, DataInclusao, cliDesativa, cliEmail, cliFantasia, cliFatBairro,
    cliFatCep, cliFatCidade, cliFatCidCodIBGE, cliFatEnd, cliFatEndNumero, cliFatUf,
-   cliFone, cliId, cliNome, cliRgInsc, cliTipoCad, cliTipo`.
+   cliCelular, cliFone, cliId, cliNome, cliRgInsc, cliTipoCad, cliTipo`.
 3. **Duplicados** (critério: `cliNome` + `cliCpfCgc` iguais): informa quantos se
    repetem e pergunta:
    - **Desativar repetidos** → mantém ativo só o **mais novo (maior cliId)** e coloca

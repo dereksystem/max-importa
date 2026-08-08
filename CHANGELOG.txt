@@ -1156,6 +1156,60 @@ AUDITORIA dos tres caminhos de UPDATE
   repetidos que ja existem no BD_ZERO). Suite: 358 com banco.
 
 --------------------------------------------------------
+ [4.1.2] - 2026-07-31
+--------------------------------------------------------
+NOVO CAMPO: cliCelular em Clientes
+- O cadastro tem DOIS campos de telefone em cliente e so um
+  era importado. O cliCelular entra no INSERT e no UPDATE, e
+  tambem na migracao Max->Max. Era lacuna ja registrada em
+  docs/COBERTURA_CAMPOS.md ("hoje so grava cliFone").
+- OPCIONAL, com o mesmo tratamento do cliFone: varchar(20),
+  cortado em 20 caracteres (evita o erro 22001), e celula
+  vazia no UPDATE MANTEM o que esta no banco.
+- Modelos atualizados com a coluna, logo apos o cliFone:
+  "modelo de importacao_cliente.txt" e a aba Clientes do
+  MaxImporta_Modelos_Importacao.xlsx.
+- 12 testes novos, 2 deles contra o banco real (INSERT
+  gravando, UPDATE so do celular sem tocar no telefone,
+  celula vazia preservando, e 30 digitos cortados em 20 sem
+  erro). Um dos unitarios confere a contagem de marcadores x
+  parametros dos dois SQLs de INSERT em 1 e 3 empresas - a
+  armadilha conhecida deste trecho.
+
+--------------------------------------------------------
+ [4.1.3] - 2026-08-08
+--------------------------------------------------------
+CORRECAO: UPDATE de Clientes nao cortava os textos (22001)
+- O INSERT sempre cortou cada texto no tamanho da coluna; o
+  UPDATE so cortava o cliFatEndNumero. Um cliente com nome de
+  60 caracteres ERA importado pelo INSERT (cortado em 50) e a
+  MESMA linha falhava no UPDATE com o erro 22001 ("String or
+  binary data would be truncated"), indo para o arquivo de
+  erros sem motivo aparente. O corte ja era o comportamento
+  documentado em docs/FUNCIONALIDADES.md.
+- Os DOIS mapa_cli (UPDATE por cliId e por CPF/CNPJ) passam a
+  cortar com os MESMOS limites do INSERT.
+- Os limites viraram uma tabela unica (ClientesImportMixin.
+  TAM_MAX, aplicada pelo novo _get_str_cli), usada por INSERT
+  e UPDATE: cliCpfCgc 20, cliNome 50, cliFantasia 50,
+  cliRgInsc 20, cliFatEnd 120, cliFatEndNumero 10,
+  cliFatBairro 70, cliFatCidade 30, cliFatUf 2, cliFatCep 9,
+  cliFatCidCodIBGE 20, cliEmail 254, cliFone 20,
+  cliCelular 20. Era a duplicacao dos numeros que deixava os
+  dois lados divergirem.
+- PRODUTOS foi conferido e ja estava correto (mapa_prod e
+  mapa_emp cortam igual ao _pro18/_pe16; proAplicacao e
+  varchar(max) nos dois). Ficou coberto por teste.
+- EFEITO PRATICO: um valor mais longo que a coluna passa a ser
+  CORTADO EM SILENCIO no UPDATE, em vez de derrubar a linha com
+  erro. E o mesmo que o INSERT sempre fez, mas quem contava com o
+  erro para descobrir dado fora do padrao precisa saber disso.
+- 37 testes novos em tests/test_update_preserva.py: um por
+  campo, nos dois caminhos de UPDATE de clientes e nos dois
+  de produtos, mais um que trava INSERT e UPDATE na mesma
+  tabela de limites. Suite: 372 sem banco.
+
+--------------------------------------------------------
  [Próxima versão] - a definir
 --------------------------------------------------------
 - (descrever aqui a próxima alteração)

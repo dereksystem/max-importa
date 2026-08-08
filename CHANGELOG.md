@@ -8,6 +8,57 @@ e aparece na tela de login, nos títulos das janelas e no cabeçalho dos relató
 
 ---
 
+## [4.1.3] — 2026-08-08
+
+### 🐛 UPDATE de Clientes cortava os textos ao contrário do INSERT (erro 22001)
+O INSERT sempre cortou cada texto no tamanho da coluna (`_get_str_max`); o UPDATE só
+cortava o `cliFatEndNumero`. O resultado era uma **incoerência visível para o usuário**:
+um cliente com nome de 60 caracteres era **importado** pelo INSERT (cortado em 50) e a
+**mesma linha** falhava no UPDATE com o erro `22001` ("String or binary data would be
+truncated"), indo para o arquivo de erros sem motivo aparente. O corte já era o
+comportamento **documentado** em `docs/FUNCIONALIDADES.md`.
+- Os dois `mapa_cli` (UPDATE por `cliId` e por **CPF/CNPJ**) passam a cortar com os
+  **mesmos limites do INSERT**.
+- Os limites saíram de números repetidos no meio do código para uma tabela única —
+  `ClientesImportMixin.TAM_MAX`, aplicada pelo novo `_get_str_cli` — usada por INSERT e
+  UPDATE. Foi a duplicação que deixou os dois lados divergirem: `cliCpfCgc` 20,
+  `cliNome` 50, `cliFantasia` 50, `cliRgInsc` 20, `cliFatEnd` 120, `cliFatEndNumero` 10,
+  `cliFatBairro` 70, `cliFatCidade` 30, `cliFatUf` 2, `cliFatCep` 9,
+  `cliFatCidCodIBGE` 20, `cliEmail` 254, `cliFone` 20, `cliCelular` 20.
+- **Produtos foi conferido e já estava correto**: `mapa_prod`/`mapa_emp` cortam com os
+  mesmos limites do `_pro18`/`_pe16` (e `proAplicacao` é `varchar(max)`, sem corte nos
+  dois lados). Ficou coberto por teste para não regredir.
+- ⚠️ **Efeito prático:** um valor mais longo que a coluna passa a ser **cortado em
+  silêncio** no UPDATE, em vez de derrubar a linha com erro. É o mesmo que o INSERT
+  sempre fez, mas quem contava com o erro para descobrir dado fora do padrão precisa
+  saber que ele não vem mais.
+- **37 testes novos** em `tests/test_update_preserva.py`: um por campo, nos dois
+  caminhos de UPDATE de clientes e nos dois de produtos, mais um que trava INSERT e
+  UPDATE na mesma tabela de limites. Suíte: **372** sem banco.
+
+---
+
+## [4.1.2] — 2026-07-31
+
+### ✨ Novo campo: `cliCelular` em Clientes
+O cadastro de cliente tem **dois** campos de contato telefônico em `cliente` e só um era
+importado. O **`cliCelular`** entra agora no **INSERT e no UPDATE**, e também na migração
+Max→Max — era uma lacuna já registrada em `docs/COBERTURA_CAMPOS.md` ("hoje só grava
+`cliFone`").
+- **Opcional**, com o mesmo tratamento do `cliFone`: `varchar(20)`, cortado em 20
+  caracteres para não estourar o erro 22001, e célula vazia no UPDATE **mantém** o que
+  está no banco.
+- Os **modelos de importação** ganharam a coluna, logo depois do `cliFone`: o
+  `modelo de importação_cliente.txt` e a aba Clientes do
+  `MaxImporta_Modelos_Importacao.xlsx`.
+- 12 testes novos, sendo **2 contra o banco real** (INSERT gravando, UPDATE só do celular
+  sem tocar no telefone, célula vazia preservando, e valor de 30 dígitos sendo cortado em
+  20 sem erro). Entre os de unidade, um confere a **contagem de marcadores × parâmetros**
+  dos dois SQLs de INSERT em 1 e 3 empresas — é a armadilha conhecida deste trecho: um
+  campo novo que entre na lista de colunas mas não na de valores desloca tudo em silêncio.
+
+---
+
 ## [4.1.1] — 2026-07-31
 
 ### 🐛 CRÍTICO — o UPDATE por CPF/CNPJ sobrescrevia o cadastro ERRADO

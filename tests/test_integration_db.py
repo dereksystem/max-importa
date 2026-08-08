@@ -1068,3 +1068,62 @@ def test_update_cliente_id_existente_continua_contando_sucesso(db_conn):
     assert "1 atualizados" in " ".join(obj._logs), obj._logs[-5:]
     assert db_conn.cursor().execute(
         "SELECT cliNome FROM cliente WHERE cliId = ?", cli_id).fetchone()[0] == f"RENOMEADO {tag}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cliCelular — campo novo, mesmo tratamento do cliFone
+# ─────────────────────────────────────────────────────────────────────────────
+def test_insert_e_update_de_cliCelular(db_conn):
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["cliId", "cliCpfCgc", "cliNome", "cliFantasia", "cliRgInsc", "cliFatEnd",
+              "cliFatEndNumero", "cliFatBairro", "cliFatCidade", "cliFatUf", "cliFatCep",
+              "cliFatCidCodIBGE", "cliFone", "cliCelular"]
+    linha = dict(_linha_cliente(tag, "CEL", "12345678000190"),
+                 cliFone="6332211000", cliCelular="63999887766")
+    obj = _harness_clientes(db_conn, pd.DataFrame([linha]), {c: c for c in campos})
+    obj._inserir_clientes()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+
+    cur = db_conn.cursor()
+    cli_id, fone, cel = cur.execute(
+        "SELECT cliId, cliFone, cliCelular FROM cliente WHERE cliNome = ?",
+        f"CLIENTE {tag} CEL").fetchone()
+    assert fone == "6332211000"
+    assert cel == "63999887766", "cliCelular tinha de ser gravado no INSERT"
+
+    # UPDATE só do celular
+    o2 = _harness_clientes(
+        db_conn, pd.DataFrame([{"cliId": str(cli_id), "cliCelular": "63911112222"}]),
+        {"cliId": "cliId", "cliCelular": "cliCelular"})
+    o2._atualizar_clientes()
+    fone2, cel2 = db_conn.cursor().execute(
+        "SELECT cliFone, cliCelular FROM cliente WHERE cliId = ?", cli_id).fetchone()
+    assert cel2 == "63911112222", "UPDATE do celular"
+    assert fone2 == "6332211000", "o telefone não podia ser tocado"
+
+    # celular VAZIO no UPDATE não apaga o que está lá
+    o3 = _harness_clientes(
+        db_conn, pd.DataFrame([{"cliId": str(cli_id), "cliCelular": "",
+                                "cliNome": f"CLIENTE {tag} RENOMEADO"}]),
+        {"cliId": "cliId", "cliCelular": "cliCelular", "cliNome": "cliNome"})
+    o3._atualizar_clientes()
+    nome3, cel3 = db_conn.cursor().execute(
+        "SELECT cliNome, cliCelular FROM cliente WHERE cliId = ?", cli_id).fetchone()
+    assert nome3 == f"CLIENTE {tag} RENOMEADO"
+    assert cel3 == "63911112222", "célula vazia APAGARIA o celular"
+
+
+def test_cliCelular_longo_e_cortado_e_nao_estoura(db_conn):
+    """A coluna é varchar(20): 30 dígitos não podem gerar erro 22001."""
+    tag = uuid.uuid4().hex[:8].upper()
+    campos = ["cliId", "cliCpfCgc", "cliNome", "cliFantasia", "cliRgInsc", "cliFatEnd",
+              "cliFatEndNumero", "cliFatBairro", "cliFatCidade", "cliFatUf", "cliFatCep",
+              "cliFatCidCodIBGE", "cliCelular"]
+    linha = dict(_linha_cliente(tag, "LONGO", "12345678901"), cliCelular="9" * 30)
+    obj = _harness_clientes(db_conn, pd.DataFrame([linha]), {c: c for c in campos})
+    obj._inserir_clientes()
+    assert obj._ultimo_resultado["inseridos"] == 1, obj._logs[-6:]
+    cel = db_conn.cursor().execute(
+        "SELECT cliCelular FROM cliente WHERE cliNome = ?",
+        f"CLIENTE {tag} LONGO").fetchone()[0]
+    assert cel == "9" * 20, f"esperava corte em 20, veio {cel!r}"

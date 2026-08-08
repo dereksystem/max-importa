@@ -139,6 +139,8 @@ As duas partes ficam em `produto_empresa` e juntas formam o CST.
 Método `_get_str_max`. Limites aplicados: `proDescricao` 100, `proLocalizador` 20,
 `proPrateleira` 20, `proCodigo` 50, `proUn` 10, `proCodCSOSN` 3, `proCodCst2` 2,
 `proTipo` 1. (`proAplicacao` é varchar(max), sem corte.)
+Valem **igualmente no INSERT e no UPDATE** — um texto que entra pelo INSERT não pode
+derrubar a mesma linha no UPDATE.
 
 ### Acerto de estoque (`_verificar_acerto_apos_sucesso` / `_gerar_acerto_estoque`)
 - Após INSERT/UPDATE **com sucesso**, verifica `produto_empresa.proEstoqueAtual > 0`:
@@ -187,7 +189,15 @@ Ao clicar em INSERIR, se vazios, o sistema **pergunta** (não bloqueia):
   demais campos são opcionais — ver *"UPDATE: célula vazia não apaga"* abaixo.
 - O preenchimento assistido (Fantasia / RG-Insc / Número) **não roda no UPDATE**: ele
   preenche células vazias, que é exatamente o que não deve ser gravado por cima.
-- Corte de textos (`_get_str_max`): cliNome 50, cliFantasia 50, cliRgInsc 20, etc.
+- Corte de textos: os **mesmos limites do INSERT**, numa tabela única
+  (`ClientesImportMixin.TAM_MAX`, aplicada por `_get_str_cli`) — `cliCpfCgc` 20,
+  `cliNome` 50, `cliFantasia` 50, `cliRgInsc` 20, `cliFatEnd` 120,
+  `cliFatEndNumero` 10, `cliFatBairro` 70, `cliFatCidade` 30, `cliFatUf` 2,
+  `cliFatCep` 9, `cliFatCidCodIBGE` 20, `cliEmail` 254, `cliFone` 20,
+  **`cliCelular` 20**. Vale para o UPDATE por `cliId` **e** por CPF/CNPJ.
+  Antes desta correção só o INSERT cortava: um `cliNome` de 60 caracteres era
+  importado (cortado em 50) e a MESMA linha caía no UPDATE com o erro 22001, indo
+  para o arquivo de erros sem motivo aparente.
 
 ---
 

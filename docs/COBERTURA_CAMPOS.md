@@ -66,7 +66,7 @@ Preenchimento alto em MAX_CENTRAL, sem FK, sem sensibilidade — os que mais faz
 ### cliente
 | Coluna | Tipo | % preench. | O que é |
 |---|---|---:|---|
-| `cliCelular` | varchar | 85,7% | **Celular** (hoje só grava `cliFone`) |
+| `cliCelular` | varchar | 85,7% | **Celular** — ✅ mapeável desde a v4.1.2 |
 | `cliFax` | varchar | 84,9% | Fax |
 | `cliCobEnd`, `cliCobEndNumero`, `cliCobBairro`, `cliCobCidade`, `cliCobUf`, `cliCobCep`, `cliCobCidCodIBGE` | varchar/int | ~83% | **Endereço de cobrança** (hoje só grava o de faturamento) |
 | `cliContNome1`, `cliContFone1`, `cliContDepto1` | varchar | 82,8% | Contato principal |

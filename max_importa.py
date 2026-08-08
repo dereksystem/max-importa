@@ -1950,6 +1950,7 @@ class JanelaClientes(ClientesImportMixin, MapeamentoDBMixin, CancelavelMixin,
         ("cliDesativa",      "cliente", "Desativado (0/1)",                False),
         ("cliEmail",         "cliente", "E-mail",                          False),
         ("cliFone",          "cliente", "Telefone",                        False),
+        ("cliCelular",       "cliente", "Celular",                         False),
         ("cliTipoCad",       "cliente", "Tipo de Cadastro",                False),
         ("cliTipo",          "cliente", "Tipo (0=Pessoa Física, 1=Pessoa Jurídica)", False),
     ]
